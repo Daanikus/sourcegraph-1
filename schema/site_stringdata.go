@@ -622,7 +622,7 @@ const SiteSchemaJSON = `{
         },
         "repositoryPathPattern": {
           "description":
-            "The pattern used to generate the corresponding Sourcegraph repository path for a GitHub or GitHub Enterprise repository. In the pattern, the variable \"{host}\" is replaced with the GitHub host (such as github.example.com), and \"{nameWithOwner}\" is replaced with the GitHub repository's \"owner/path\" (such as \"myorg/myrepo\").\n\nFor example, if your GitHub Enterprise URL is https://github.example.com and your Sourcegraph URL is https://src.example.com, then a repositoryPathPattern of \"{host}/{nameWithOwner}\" would mean that a GitHub repository at https://github.example.com/myorg/myrepo is available on Sourcegraph at https://src.example.com/github.example.com/myorg/myrepo.",
+            "The pattern used to generate the corresponding Sourcegraph repository path for a GitHub or GitHub Enterprise repository. In the pattern, the variable \"{host}\" is replaced with the GitHub host (such as github.example.com), and \"{nameWithOwner}\" is replaced with the GitHub repository's \"owner/path\" (such as \"myorg/myrepo\").\n\nFor example, if your GitHub Enterprise URL is https://github.example.com and your Sourcegraph URL is https://src.example.com, then a repositoryPathPattern of \"{host}/{nameWithOwner}\" would mean that a GitHub repository at https://github.example.com/myorg/myrepo is available on Sourcegraph at https://src.example.com/github.example.com/myorg/myrepo.\n\nIt is important that the Sourcegraph repository path generated with this pattern be unique to this code host. If different code hosts generate repository paths that collide, Sourcegraph's behavior is undefined.",
           "type": "string",
           "default": "{host}/{nameWithOwner}"
         },
@@ -652,7 +652,8 @@ const SiteSchemaJSON = `{
           "examples": ["https://gitlab.com", "https://gitlab.example.com"]
         },
         "token": {
-          "description": "A GitLab personal access token with \"api\" scope.",
+          "description":
+            "A GitLab personal access token with \"api\" scope. If this is not a sudo-level token, then you must set ` + "`" + `permissions.ignore` + "`" + ` to true.",
           "type": "string",
           "pattern": "^[^<>]+$"
         },
@@ -679,7 +680,7 @@ const SiteSchemaJSON = `{
         },
         "repositoryPathPattern": {
           "description":
-            "The pattern used to generate a the corresponding Sourcegraph repository path for a GitLab project. In the pattern, the variable \"{host}\" is replaced with the GitLab URL's host (such as gitlab.example.com), and \"{pathWithNamespace}\" is replaced with the GitLab project's \"namespace/path\" (such as \"myteam/myproject\").\n\nFor example, if your GitLab is https://gitlab.example.com and your Sourcegraph is https://src.example.com, then a repositoryPathPattern of \"{host}/{pathWithNamespace}\" would mean that a GitLab project at https://gitlab.example.com/myteam/myproject is available on Sourcegraph at https://src.example.com/gitlab.example.com/myteam/myproject.",
+            "The pattern used to generate a the corresponding Sourcegraph repository path for a GitLab project. In the pattern, the variable \"{host}\" is replaced with the GitLab URL's host (such as gitlab.example.com), and \"{pathWithNamespace}\" is replaced with the GitLab project's \"namespace/path\" (such as \"myteam/myproject\").\n\nFor example, if your GitLab is https://gitlab.example.com and your Sourcegraph is https://src.example.com, then a repositoryPathPattern of \"{host}/{pathWithNamespace}\" would mean that a GitLab project at https://gitlab.example.com/myteam/myproject is available on Sourcegraph at https://src.example.com/gitlab.example.com/myteam/myproject.\n\nIt is important that the Sourcegraph repository path generated with this pattern be unique to this code host. If different code hosts generate repository paths that collide, Sourcegraph's behavior is undefined.",
           "type": "string",
           "default": "{host}/{pathWithNamespace}"
         },
@@ -687,6 +688,24 @@ const SiteSchemaJSON = `{
           "description":
             "Defines whether repositories from this GitLab instance should be enabled and cloned when they are first seen by Sourcegraph. If false, the site admin must explicitly enable GitLab repositories (in the site admin area) to clone them and make them searchable on Sourcegraph. If true, they will be enabled and cloned immediately (subject to rate limiting by GitLab); site admins can still disable them explicitly, and they'll remain disabled.",
           "type": "boolean"
+        },
+        "permissions.ignore": {
+          "description":
+            "If true, ignores GitLab permissions. This will make every repository from this GitLab host accessible to every authenticated user. If the access token is not a sudo token, you must set this option to true.",
+          "type": "boolean",
+          "default": false
+        },
+        "permissions.matcher": {
+          "description":
+            "Specifies a pattern used to match repository paths that belong to this GitLab instance. The pattern must begin with \"*/\" (suffix match) or end with \"/*\" (prefix match). It is important that this pattern matches *all* repositories that come from this code host, because repositories that are not matched to a code host are by default accessible to all users. If left empty, the ` + "`" + `external_service_id` + "`" + ` column of the ` + "`" + `repo` + "`" + ` DB table will be used to match repositories with this code host.",
+          "type": "string",
+          "default": ""
+        },
+        "permissions.ttl": {
+          "description":
+            "The TTL of how long to cache permissions data. This is 24 hours by default. If set to zero, Sourcegraph will sync a user's entire accessible repository list on every request (NOT recommended).",
+          "type": "string",
+          "default": "24h"
         }
       }
     },
@@ -736,7 +755,7 @@ const SiteSchemaJSON = `{
         },
         "repositoryPathPattern": {
           "description":
-            "The pattern used to generate the corresponding Sourcegraph repository path for a Bitbucket Server repository.\n\n - \"{host}\" is replaced with the Bitbucket Server URL's host (such as bitbucket.example.com)\n - \"{projectKey}\" is replaced with the Bitbucket repository's parent project key (such as \"PRJ\")\n - \"{repositorySlug}\" is replaced with the Bitbucket repository's slug key (such as \"my-repo\").\n\nFor example, if your Bitbucket Server is https://bitbucket.example.com and your Sourcegraph is https://src.example.com, then a repositoryPathPattern of \"{host}/{projectKey}/{repositorySlug}\" would mean that a Bitbucket Server repository at https://bitbucket.example.com/projects/PRJ/repos/my-repo is available on Sourcegraph at https://src.example.com/bitbucket.example.com/PRJ/my-repo.",
+            "The pattern used to generate the corresponding Sourcegraph repository path for a Bitbucket Server repository.\n\n - \"{host}\" is replaced with the Bitbucket Server URL's host (such as bitbucket.example.com)\n - \"{projectKey}\" is replaced with the Bitbucket repository's parent project key (such as \"PRJ\")\n - \"{repositorySlug}\" is replaced with the Bitbucket repository's slug key (such as \"my-repo\").\n\nFor example, if your Bitbucket Server is https://bitbucket.example.com and your Sourcegraph is https://src.example.com, then a repositoryPathPattern of \"{host}/{projectKey}/{repositorySlug}\" would mean that a Bitbucket Server repository at https://bitbucket.example.com/projects/PRJ/repos/my-repo is available on Sourcegraph at https://src.example.com/bitbucket.example.com/PRJ/my-repo.\n\nIt is important that the Sourcegraph repository path generated with this pattern be unique to this code host. If different code hosts generate repository paths that collide, Sourcegraph's behavior is undefined.",
           "type": "string",
           "default": "{host}/{projectKey}/{repositorySlug}"
         },
@@ -791,7 +810,7 @@ const SiteSchemaJSON = `{
         },
         "repositoryPathPattern": {
           "description":
-            "The pattern used to generate a the corresponding Sourcegraph repository path for an AWS CodeCommit repository. In the pattern, the variable \"{name}\" is replaced with the repository's name.\n\nFor example, if your Sourcegraph instance is at https://src.example.com, then a repositoryPathPattern of \"awsrepos/{name}\" would mean that a AWS CodeCommit repository named \"myrepo\" is available on Sourcegraph at https://src.example.com/awsrepos/myrepo.",
+            "The pattern used to generate a the corresponding Sourcegraph repository path for an AWS CodeCommit repository. In the pattern, the variable \"{name}\" is replaced with the repository's name.\n\nFor example, if your Sourcegraph instance is at https://src.example.com, then a repositoryPathPattern of \"awsrepos/{name}\" would mean that a AWS CodeCommit repository named \"myrepo\" is available on Sourcegraph at https://src.example.com/awsrepos/myrepo.\n\nIt is important that the Sourcegraph repository path generated with this pattern be unique to this code host. If different code hosts generate repository paths that collide, Sourcegraph's behavior is undefined.",
           "type": "string",
           "default": "{name}"
         },
@@ -809,7 +828,7 @@ const SiteSchemaJSON = `{
       "properties": {
         "prefix": {
           "description":
-            "Repository URI prefix that will map to this Gitolite host. This should likely end with a trailing slash. E.g., \"gitolite.example.com/\".",
+            "Repository URI prefix that will map to this Gitolite host. This should likely end with a trailing slash. E.g., \"gitolite.example.com/\".\n\nIt is important that the Sourcegraph repository path generated with this prefix be unique to this code host. If different code hosts generate repository paths that collide, Sourcegraph's behavior is undefined.",
           "type": "string"
         },
         "host": {

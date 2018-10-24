@@ -37,6 +37,23 @@ All notable changes to Sourcegraph are documented in this file.
   rate limit dropped below 150.
 - Fixed an issue where GraphQL field `elapsedMilliseconds` returned invalid value on empty searches
 - Editor extensions now properly search the selection as a literal string, instead of incorrectly using regexp.
+- ACTION REQUIRED: GitLab on-prem and GitHub Enterprise repository permissions are now checked by
+  default.
+  - If you want permissions to be checked, you must take the following actions:
+    - Ensure your GitLab access token is sudo level. The sudo token will be used to generate an
+      impersonation token for a given user that is then used to query GitLab for a list of
+      accessible repositories.
+    - NOTE: Sourcegraph assumes the username on Sourcegraph is identical to the username on
+      GitLab. This should be true if you are using the same SSO provider for both Sourcegraph and
+      GitLab. It is NOT necessarily true if you are using Sourcegraph native authentication. Please
+      ensure you have SSO configured properly before enabling permissions.
+    - Optional: Set `permissions.matcher` to match the repositories on Sourcegraph that come from
+      this GitLab instance.
+    - Optional: Set `permissions.ttl` to set the TTL of repository permissions fetched from the
+      GitLab API.
+  - If you would like to preserve the previous behavior (permissions are not enforced and every
+    repository on Sourcegraph is accessible to every user), set `permissions.ignore` to true in the
+    GitLab config (an item in the list of objects under the top-level `gitlab` field).
 
 ### Removed
 

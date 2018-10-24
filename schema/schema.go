@@ -154,6 +154,9 @@ type GitLabConnection struct {
 	Certificate                 string   `json:"certificate,omitempty"`
 	GitURLType                  string   `json:"gitURLType,omitempty"`
 	InitialRepositoryEnablement bool     `json:"initialRepositoryEnablement,omitempty"`
+	PermissionsIgnore           bool     `json:"permissions.ignore,omitempty"`
+	PermissionsMatcher          string   `json:"permissions.matcher,omitempty"`
+	PermissionsTtl              string   `json:"permissions.ttl,omitempty"`
 	ProjectQuery                []string `json:"projectQuery,omitempty"`
 	RepositoryPathPattern       string   `json:"repositoryPathPattern,omitempty"`
 	Token                       string   `json:"token"`
