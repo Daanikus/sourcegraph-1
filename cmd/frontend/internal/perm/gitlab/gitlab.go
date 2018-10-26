@@ -195,8 +195,8 @@ type matchType string
 
 const (
 	matchPrefix    matchType = "prefix"
-	matchSuffix              = "suffix"
-	matchSubstring           = "substring"
+	matchSuffix    matchType = "suffix"
+	matchSubstring matchType = "substring"
 )
 
 func ParseMatchPattern(matchPattern string) (mt matchType, matchString string, err error) {
