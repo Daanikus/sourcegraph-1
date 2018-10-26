@@ -692,7 +692,7 @@
         },
         "permissions.matcher": {
           "description":
-            "Specifies a pattern used to match repository paths that belong to this GitLab instance. The pattern must begin with \"*/\" (suffix match) or end with \"/*\" (prefix match). It is important that this pattern matches *all* repositories that come from this code host, because repositories that are not matched to a code host are by default accessible to all users. If left empty, the `external_service_id` column of the `repo` DB table will be used to match repositories with this code host.",
+            "Specifies a pattern used to match repository paths that belong to this GitLab instance. The pattern must begin with \"*\\/\" (suffix match) or end with \"\\/*\" (prefix match). It is important that this pattern matches *all* repositories that come from this code host, because repositories that are not matched to a code host are by default accessible to all users. If left empty, the `external_service_id` column of the `repo` DB table will be used to match repositories with this code host.",
           "type": "string",
           "default": ""
         },
