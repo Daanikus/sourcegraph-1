@@ -8,14 +8,14 @@ import (
 	"github.com/sourcegraph/sourcegraph/pkg/trace"
 )
 
-// Actor represents an agent that accesses resources. It can represent
-// an anonymous user or an authenticated user.
+// Actor represents an agent that accesses resources. It can represent an anonymous user, an
+// authenticated user, or an internal Sourcegraph service.
 type Actor struct {
 	// UID is the unique ID of the authenticated user, or 0 for anonymous actors.
 	UID int32 `json:",omitempty"`
 
-	// Internal is true if the actor represents an agent within Sourcegraph (and is therefore not
-	// tied to a specific user).
+	// Internal is true if the actor represents an internal Sourcegraph service (and is therefore
+	// not tied to a specific user).
 	Internal bool `json:",omitempty"`
 
 	// FromSessionCookie is whether a session cookie was used to authenticate the actor. It is used
