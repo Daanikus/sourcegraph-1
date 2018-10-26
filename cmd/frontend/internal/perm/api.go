@@ -18,6 +18,9 @@ func Filter(ctx context.Context, repos []*types.Repo, p P) ([]*types.Repo, error
 		return MockFilter(ctx, repos, p)
 	}
 
+	if len(repos) == 0 {
+		return repos, nil
+	}
 	if isInternalActor(ctx) {
 		return repos, nil
 	}

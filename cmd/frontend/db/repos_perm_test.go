@@ -18,6 +18,7 @@ func Test_getBySQL_permissionsCheck(t *testing.T) {
 	}
 
 	ctx := dbtesting.TestContext(t)
+
 	allRepos := mustCreate(ctx, t, &types.Repo{
 		URI: "r0",
 		ExternalRepo: &api.ExternalRepoSpec{
