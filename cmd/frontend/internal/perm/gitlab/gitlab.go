@@ -140,17 +140,20 @@ func reposByMatchPattern(mt matchType, matchString string, repos map[perm.Repo]s
 	return mine, others, nil
 }
 
+// getCachedAccessList returns the list of repositories accessible to a user from the cache and
+// whether the cache entry exists.
 func (p *GitLabAuthzProvider) getCachedAccessList(authzID perm.AuthzID) (map[api.RepoURI]struct{}, bool) {
 
 	// TODO(beyang): trigger best-effort fetch in background if ttl is getting close (but avoid dup refetches)
 
 	cachedReposB, exists := p.cache.Get(string(authzID))
 	if !exists {
-		return nil, exists
+		return nil, false
 	}
 	var r cacheVal
 	if err := json.Unmarshal(cachedReposB, &r); err != nil {
-		log15.Warn("Failed to unmarshal repo perm cache entry: %s", err.Error())
+		log15.Warn("Failed to unmarshal repo perm cache entry", "err", err.Error())
+		p.cache.Delete(string(authzID))
 		return nil, false
 	}
 	return r.repos, true
