@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"github.com/sourcegraph/sourcegraph/pkg/api"
-	"github.com/sourcegraph/sourcegraph/pkg/externalservice"
+	"github.com/sourcegraph/sourcegraph/pkg/extsvc"
 )
 
 // GitLabServiceType is the (api.ExternalRepoSpec).ServiceType value for GitLab projects. The ServiceID value is
@@ -17,7 +17,7 @@ func GitLabExternalRepoSpec(proj *Project, baseURL url.URL) *api.ExternalRepoSpe
 	return &api.ExternalRepoSpec{
 		ID:          strconv.Itoa(proj.ID),
 		ServiceType: GitLabServiceType,
-		ServiceID:   externalservice.NormalizeBaseURL(&baseURL).String(),
+		ServiceID:   extsvc.NormalizeBaseURL(&baseURL).String(),
 	}
 }
 
@@ -26,7 +26,15 @@ type CodeHost struct {
 }
 
 func NewCodeHost(baseURL *url.URL) *CodeHost {
-	return &CodeHost{id: externalservice.NormalizeBaseURL(baseURL).String()}
+	return &CodeHost{id: extsvc.NormalizeBaseURL(baseURL).String()}
+}
+
+func (h *CodeHost) ServiceID() string {
+	return h.id
+}
+
+func (h *CodeHost) ServiceType() string {
+	return GitLabServiceType
 }
 
 func (h *CodeHost) IsHostOf(repo *api.ExternalRepoSpec) bool {

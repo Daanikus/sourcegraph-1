@@ -3,7 +3,9 @@ package perm
 import (
 	"context"
 
+	"github.com/sourcegraph/sourcegraph/cmd/frontend/types"
 	"github.com/sourcegraph/sourcegraph/pkg/api"
+	"github.com/sourcegraph/sourcegraph/pkg/extsvc"
 )
 
 type (
@@ -56,6 +58,11 @@ type AuthnProvider interface {
 // necessary.  For instance, an AuthzID could be the name of a role that is sufficient for the authz
 // provider to determine permissions.
 type AuthzProvider interface {
+	// Repos partitions the set of repositories into two sets: the set of repositories for which
+	// this AuthzProvider is the source of permissions and the set of repositories for which it is
+	// not. Each repository in the input set must be represented in exactly one of the output sets.
+	Repos(ctx context.Context, repos map[Repo]struct{}) (mine map[Repo]struct{}, others map[Repo]struct{})
+
 	// RepoPerms returns a map where the keys comprise a subset of the input repos to which the user
 	// identified by authzID has access. The values of the map indicate which permissions the user
 	// has for each repo. Every repo in the input set is represented in the output map if the repo
@@ -68,12 +75,9 @@ type AuthzProvider interface {
 	// repo permissions it needs to compute.  In practice, most will probably use a combination of
 	// (1) "list all private repos the user has access to", (2) a mechanism to determine which repos
 	// are public/private, and (3) a cache of some sort.
-	RepoPerms(ctx context.Context, authzID AuthzID, repos map[Repo]struct{}) (map[api.RepoURI]map[P]bool, error)
+	RepoPerms(ctx context.Context, userAccount *extsvc.ExternalAccount, repos map[Repo]struct{}) (map[api.RepoURI]map[P]bool, error)
 
-	// Repos partitions the set of repositories into two sets: the set of repositories for which
-	// this AuthzProvider is the source of permissions and the set of repositories for which it is
-	// not. Each repository in the input set must be represented in exactly one of the output sets.
-	Repos(ctx context.Context, repos map[Repo]struct{}) (mine map[Repo]struct{}, others map[Repo]struct{})
+	GetAccount(ctx context.Context, user *types.User, current []*extsvc.ExternalAccount) (mine *extsvc.ExternalAccount, isNew bool)
 }
 
 // IdentityToAuthzIDMapper maps UserIDs (from a AuthnProvider) to AuthzIDs (to a AuthzProvider).

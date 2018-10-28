@@ -137,7 +137,7 @@ func (s *repos) getBySQL(ctx context.Context, querySuffix *sqlf.Query) ([]*types
 	}
 
 	// 🚨 SECURITY: This enforces repository permissions
-	return perm.Filter(ctx, repos, perm.Read)
+	return authzFilter(ctx, repos, perm.Read)
 }
 
 // ReposListOptions specifies the options for listing repositories.

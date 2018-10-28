@@ -7,13 +7,16 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/perm"
+	"github.com/sourcegraph/sourcegraph/cmd/frontend/types"
 	"github.com/sourcegraph/sourcegraph/pkg/api"
 	"github.com/sourcegraph/sourcegraph/pkg/conf/reposource"
-	"github.com/sourcegraph/sourcegraph/pkg/externalservice/gitlab"
+	"github.com/sourcegraph/sourcegraph/pkg/extsvc"
+	"github.com/sourcegraph/sourcegraph/pkg/extsvc/gitlab"
 	"github.com/sourcegraph/sourcegraph/pkg/rcache"
 	log15 "gopkg.in/inconshreveable/log15.v2"
 )
@@ -30,6 +33,21 @@ type GitLabAuthzProvider struct {
 	codeHost        *gitlab.CodeHost
 	repoPathPattern string
 	cache           pcache
+
+	// identityServiceID is the ID of the external service whose account ID should be used to
+	// identify the user to GitLab to compute permissions. It should match the service ID of one of
+	// the authn providers.
+	identityServiceID string
+
+	// identityServiceType is the type of the external service whose account ID should be used to
+	// identify the user to GitLab to compute permissions. It should match the service type of one
+	// of the authn providers.
+	identityServiceType string
+
+	// gitlabIdentityProviderID is the string that should be passed to the `provider` URL query
+	// parameter when looking up the user via the GitLab API. It is analogous to
+	// identityServiceType, but for GitLab.
+	gitlabIdentityProviderID string
 
 	// matchPattern, if non-empty, should be a string that may contain a prefix "*/" or suffix "/*".
 	// If it satisfies neither, *no* repositories will be matched.  If empty, we match on the value
@@ -109,6 +127,51 @@ func (p *GitLabAuthzProvider) Repos(ctx context.Context, repos map[perm.Repo]str
 		}
 	}
 	return mine, others
+}
+
+func (p *GitLabAuthzProvider) GetAccount(ctx context.Context, user *types.User, current []*extsvc.ExternalAccount) (mine *extsvc.ExternalAccount, updated bool, err error) {
+	var idAccount *extsvc.ExternalAccount
+	for _, acct := range current {
+		if p.codeHost.ServiceID() == acct.ServiceID && p.codeHost.ServiceType() == acct.ServiceType {
+			return acct, false, nil
+		}
+		if p.codeHost.ServiceID() == p.identityServiceID && p.codeHost.ServiceType() == p.identityServiceType {
+			idAccount = acct
+		}
+	}
+
+	q := make(url.Values)
+	q.Add("extern_uid", idAccount.AccountID)
+	q.Add("provider", p.gitlabIdentityProviderID)
+	q.Add("per_page", "2")
+	glUsers, _, err := p.client.ListUsers(ctx, "users?"+q.Encode())
+	if err != nil {
+		return nil, false, err
+	}
+	if len(glUsers) >= 2 {
+		return nil, false, fmt.Errorf("failed to determine unique GitLab user for query %q", q.Encode())
+	}
+	if len(glUsers) == 0 {
+		return nil, false, fmt.Errorf("failed to find a GitLab user matching query %q", q.Encode())
+	}
+	glUser := glUsers[0]
+	jsonGLUser, err := json.Marshal(glUser)
+	if err != nil {
+		return nil, false, err
+	}
+	accountData := json.RawMessage(jsonGLUser)
+	glExternalAccount := extsvc.ExternalAccount{
+		UserID: glUser.ID,
+		ExternalAccountSpec: extsvc.ExternalAccountSpec{
+			ServiceType: p.codeHost.ServiceType(),
+			ServiceID:   p.codeHost.ServiceID(),
+			AccountID:   strconv.Itoa(int(glUser.ID)),
+		},
+		ExternalAccountData: extsvc.ExternalAccountData{
+			AccountData: &accountData,
+		},
+	}
+	return &glExternalAccount, true, nil
 }
 
 func reposByMatchPattern(mt matchType, matchString string, repos map[perm.Repo]struct{}) (mine map[perm.Repo]struct{}, others map[perm.Repo]struct{}, err error) {

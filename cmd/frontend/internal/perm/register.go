@@ -24,3 +24,14 @@ func SetProviders(permsAllowByDefault bool, n []AuthnProvider, z []AuthzProvider
 	identityToAuthzIDMappers = m
 	permissionsAllowByDefault = permsAllowByDefault
 }
+
+// DoWithAuthzProviders provides concurrency-safe access to the authz providers currently registered.
+func DoWithAuthzProviders(f func(p []AuthzProvider) error) error {
+	providersMu.RLock()
+	defer providersMu.RUnlock()
+	return f(authzProviders)
+}
+
+func AllowByDefault() bool {
+	return permissionsAllowByDefault
+}

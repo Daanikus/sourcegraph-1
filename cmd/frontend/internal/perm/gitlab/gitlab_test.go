@@ -10,7 +10,7 @@ import (
 
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/perm"
 	"github.com/sourcegraph/sourcegraph/pkg/api"
-	"github.com/sourcegraph/sourcegraph/pkg/externalservice/gitlab"
+	"github.com/sourcegraph/sourcegraph/pkg/extsvc/gitlab"
 )
 
 func Test_GitLab_RepoPerms(t *testing.T) {

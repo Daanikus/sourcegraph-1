@@ -1,4 +1,4 @@
-package externalservice
+package extsvc
 
 import (
 	"net/url"
@@ -8,6 +8,8 @@ import (
 )
 
 type CodeHost interface {
+	ServiceID() string
+	ServiceType() string
 	IsHostOf(repo *api.ExternalRepoSpec) bool
 }
 
