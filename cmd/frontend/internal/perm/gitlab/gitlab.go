@@ -53,6 +53,12 @@ type GitLabAuthzProvider struct {
 	// parameter when looking up the user via the GitLab API. It is analogous to
 	// identityServiceType, but for GitLab.
 	gitlabIdentityProviderID string
+
+	// userNativeUsername, if true, makes this provider compute the correspondence to GitLab user
+	// using the Sourcegraph username. This is highly unsafe (as the username is mutable and not
+	// intrinsically tied ot the GitLab username) and should only be used in development/testing
+	// environments.
+	useNativeUsername bool
 }
 
 type cacheVal struct {
@@ -70,6 +76,7 @@ type GitLabAuthzProviderOp struct {
 	MatchPattern             string
 	CacheTTL                 time.Duration
 	MockCache                pcache
+	UseNativeUsername        bool
 }
 
 func NewGitLabAuthzProvider(op GitLabAuthzProviderOp) *GitLabAuthzProvider {
@@ -83,6 +90,7 @@ func NewGitLabAuthzProvider(op GitLabAuthzProviderOp) *GitLabAuthzProvider {
 		identityServiceID:        op.IdentityServiceID,
 		identityServiceType:      op.IdentityServiceType,
 		gitlabIdentityProviderID: op.GitLabIdentityProviderID,
+		useNativeUsername:        op.UseNativeUsername,
 	}
 	if p.cache == nil {
 		p.cache = rcache.NewWithTTL(fmt.Sprintf("gitlabAuthz:%s", op.BaseURL.String()), int(math.Ceil(op.CacheTTL.Seconds())))
@@ -155,25 +163,21 @@ func (p *GitLabAuthzProvider) GetAccount(ctx context.Context, user *types.User, 
 		}
 	}
 
-	q := make(url.Values)
-	q.Add("extern_uid", idAccount.AccountID)
-	q.Add("provider", p.gitlabIdentityProviderID)
-	q.Add("per_page", "2")
-	glUsers, _, err := p.client.ListUsers(ctx, "users?"+q.Encode())
+	var glUser *gitlab.User
+	if p.useNativeUsername {
+		glUser, err = p.fetchAccountByUsername(ctx, user.Username)
+	} else {
+		glUser, err = p.fetchAccountByExternalUID(ctx, idAccount.AccountID)
+	}
 	if err != nil {
 		return nil, false, err
 	}
-	if len(glUsers) >= 2 {
-		return nil, false, fmt.Errorf("failed to determine unique GitLab user for query %q", q.Encode())
-	}
-	if len(glUsers) == 0 {
-		return nil, false, fmt.Errorf("failed to find a GitLab user matching query %q", q.Encode())
-	}
-	glUser := glUsers[0]
+
 	jsonGLUser, err := json.Marshal(glUser)
 	if err != nil {
 		return nil, false, err
 	}
+
 	accountData := json.RawMessage(jsonGLUser)
 	glExternalAccount := extsvc.ExternalAccount{
 		UserID: glUser.ID,
@@ -187,6 +191,41 @@ func (p *GitLabAuthzProvider) GetAccount(ctx context.Context, user *types.User, 
 		},
 	}
 	return &glExternalAccount, true, nil
+}
+
+func (p *GitLabAuthzProvider) fetchAccountByExternalUID(ctx context.Context, uid string) (*gitlab.User, error) {
+	q := make(url.Values)
+	q.Add("extern_uid", uid)
+	q.Add("provider", p.gitlabIdentityProviderID)
+	q.Add("per_page", "2")
+	glUsers, _, err := p.client.ListUsers(ctx, "users?"+q.Encode())
+	if err != nil {
+		return nil, err
+	}
+	if len(glUsers) >= 2 {
+		return nil, fmt.Errorf("failed to determine unique GitLab user for query %q", q.Encode())
+	}
+	if len(glUsers) == 0 {
+		return nil, fmt.Errorf("failed to find a GitLab user matching query %q", q.Encode())
+	}
+	return glUsers[0], nil
+}
+
+func (p *GitLabAuthzProvider) fetchAccountByUsername(ctx context.Context, username string) (*gitlab.User, error) {
+	q := make(url.Values)
+	q.Add("username", username)
+	q.Add("per_page", "2")
+	glUsers, _, err := p.client.ListUsers(ctx, "users?"+q.Encode())
+	if err != nil {
+		return nil, err
+	}
+	if len(glUsers) >= 2 {
+		return nil, fmt.Errorf("failed to determine unique GitLab user for query %q", q.Encode())
+	}
+	if len(glUsers) == 0 {
+		return nil, fmt.Errorf("failed to find a GitLab user matching query %q", q.Encode())
+	}
+	return glUsers[0], nil
 }
 
 func reposByMatchPattern(mt matchType, matchString string, repos map[perm.Repo]struct{}) (mine map[perm.Repo]struct{}, others map[perm.Repo]struct{}, err error) {
