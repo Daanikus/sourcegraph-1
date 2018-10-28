@@ -89,24 +89,23 @@ func providersFromConfig(cfg *schema.SiteConfiguration) (
 			ttl = time.Hour * 24
 		}
 
-		if gl.PermissionsAuthnProvider == nil {
-			seriousProblems = append(seriousProblems, "No `permissions.authnProvider` specified for GitLab connection.")
-			continue
+		op := permgl.GitLabAuthzProviderOp{
+			BaseURL:         glURL,
+			SudoToken:       gl.Token,
+			RepoPathPattern: gl.RepositoryPathPattern,
+			MatchPattern:    gl.PermissionsMatcher,
+			CacheTTL:        ttl,
+			MockCache:       nil,
 		}
-
-		authzProviders = append(authzProviders,
-			NewGitLabAuthzProvider(permgl.GitLabAuthzProviderOp{
-				BaseURL:                  glURL,
-				IdentityServiceID:        gl.PermissionsAuthnProvider.ServiceID,
-				IdentityServiceType:      gl.PermissionsAuthnProvider.Type,
-				GitLabIdentityProviderID: gl.PermissionsAuthnProvider.GitlabProvider,
-				SudoToken:                gl.Token,
-				RepoPathPattern:          gl.RepositoryPathPattern,
-				MatchPattern:             gl.PermissionsMatcher,
-				CacheTTL:                 ttl,
-				MockCache:                nil,
-			}),
-		)
+		if gl.PermissionsAuthnProvider == nil {
+			seriousProblems = append(seriousProblems, "No `permissions.authnProvider` specified for GitLab connection. Falling back to using username matching, which is insecure.")
+			op.UseNativeUsername = true
+		} else {
+			op.IdentityServiceID = gl.PermissionsAuthnProvider.ServiceID
+			op.IdentityServiceType = gl.PermissionsAuthnProvider.Type
+			op.GitLabIdentityProviderID = gl.PermissionsAuthnProvider.GitlabProvider
+		}
+		authzProviders = append(authzProviders, NewGitLabAuthzProvider(op))
 	}
 
 	return permissionsAllowByDefault, authzProviders, seriousProblems, warnings
