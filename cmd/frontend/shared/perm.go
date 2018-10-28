@@ -42,9 +42,7 @@ func (m StandardAuthnProvider) CurrentIdentity(ctx context.Context) (perm.UserID
 // perm.permissionsAllowByDefault to false. "Warnings" are all other validation problems.
 func providersFromConfig(cfg *schema.SiteConfiguration) (
 	permissionsAllowByDefault bool,
-	authnProviders []perm.AuthnProvider,
 	authzProviders []perm.AuthzProvider,
-	identityMappers []perm.IdentityToAuthzIDMapper,
 	seriousProblems []string,
 	warnings []string,
 ) {
@@ -65,19 +63,13 @@ func providersFromConfig(cfg *schema.SiteConfiguration) (
 		}
 	}
 
-	// Authentication provider
-	authnProviders = append(authnProviders, StandardAuthnProvider{})
-
-	// Authentication ID to authorization provider ID mapper. Currently, we always use the
-	// IdentityMapper, which assumes the Sourcegraph username is the same as the code host
-	// username.
-	identityMappers = append(identityMappers, perm.IdentityMapper{})
-
 	// Authorization (i.e., permissions) providers
 	for _, gl := range cfg.Gitlab {
 		if gl.PermissionsIgnore {
 			continue
 		}
+
+		// TODO: any more warnings (e.g., missing identityServiceID) when permissions are enabled?
 
 		glURL, err := url.Parse(gl.Url)
 		if err != nil {

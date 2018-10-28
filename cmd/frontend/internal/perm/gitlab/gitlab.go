@@ -34,6 +34,11 @@ type GitLabAuthzProvider struct {
 	repoPathPattern string
 	cache           pcache
 
+	// matchPattern, if non-empty, should be a string that may contain a prefix "*/" or suffix "/*".
+	// If it satisfies neither, *no* repositories will be matched.  If empty, we match on the value
+	// of ExternalRepoSpec (fetched from the DB).
+	matchPattern string
+
 	// identityServiceID is the ID of the external service whose account ID should be used to
 	// identify the user to GitLab to compute permissions. It should match the service ID of one of
 	// the authn providers.
@@ -48,11 +53,6 @@ type GitLabAuthzProvider struct {
 	// parameter when looking up the user via the GitLab API. It is analogous to
 	// identityServiceType, but for GitLab.
 	gitlabIdentityProviderID string
-
-	// matchPattern, if non-empty, should be a string that may contain a prefix "*/" or suffix "/*".
-	// If it satisfies neither, *no* repositories will be matched.  If empty, we match on the value
-	// of ExternalRepoSpec (fetched from the DB).
-	matchPattern string
 }
 
 type cacheVal struct {
@@ -60,29 +60,44 @@ type cacheVal struct {
 	repos map[api.RepoURI]struct{}
 }
 
-func NewGitLabAuthzProvider(baseURL *url.URL, sudoToken, repoPathPattern, matchPattern string, cacheTTL time.Duration, mockCache pcache) *GitLabAuthzProvider {
+type GitLabAuthzProviderOp struct {
+	BaseURL                  *url.URL
+	IdentityServiceID        string
+	identityServiceType      string
+	GitLabIdentityProviderID string
+	SudoToken                string
+	RepoPathPattern          string
+	MatchPattern             string
+	CacheTTL                 time.Duration
+	MockCache                pcache
+}
+
+func NewGitLabAuthzProvider(op GitLabAuthzProviderOp) *GitLabAuthzProvider {
 	p := &GitLabAuthzProvider{
-		client:          gitlab.NewClient(baseURL, sudoToken, nil),
-		clientURL:       baseURL,
-		codeHost:        gitlab.NewCodeHost(baseURL),
-		repoPathPattern: repoPathPattern,
-		matchPattern:    matchPattern,
-		cache:           mockCache,
+		client:                   gitlab.NewClient(op.BaseURL, op.SudoToken, nil),
+		clientURL:                op.BaseURL,
+		codeHost:                 gitlab.NewCodeHost(op.BaseURL),
+		repoPathPattern:          op.RepoPathPattern,
+		matchPattern:             op.MatchPattern,
+		cache:                    op.MockCache,
+		identityServiceID:        op.IdentityServiceID,
+		identityServiceType:      op.IdentityServiceType,
+		gitlabIdentityProviderID: op.GitLabIdentityPRoviderID,
 	}
 	if p.cache == nil {
-		p.cache = rcache.NewWithTTL(fmt.Sprintf("gitlabAuthz:%s", baseURL.String()), int(math.Ceil(cacheTTL.Seconds())))
+		p.cache = rcache.NewWithTTL(fmt.Sprintf("gitlabAuthz:%s", op.BaseURL.String()), int(math.Ceil(op.CacheTTL.Seconds())))
 	}
 	return p
 }
 
-func (p *GitLabAuthzProvider) RepoPerms(ctx context.Context, authzID perm.AuthzID, repos map[perm.Repo]struct{}) (map[api.RepoURI]map[perm.P]bool, error) {
+func (p *GitLabAuthzProvider) RepoPerms(ctx context.Context, account *extsvc.ExternalAccount, repos map[perm.Repo]struct{}) (map[api.RepoURI]map[perm.P]bool, error) {
 	myRepos, _ := p.Repos(ctx, repos)
 	var accessibleRepos map[api.RepoURI]struct{}
-	if r, exists := p.getCachedAccessList(authzID); exists {
+	if r, exists := p.getCachedAccessList(account.AccountID); exists {
 		accessibleRepos = r
 	} else {
 		var err error
-		accessibleRepos, err = p.fetchUserAccessList(ctx, authzID)
+		accessibleRepos, err = p.fetchUserAccessList(ctx, account.AccountID)
 		if err != nil {
 			return nil, err
 		}
@@ -91,7 +106,7 @@ func (p *GitLabAuthzProvider) RepoPerms(ctx context.Context, authzID perm.AuthzI
 		if err != nil {
 			return nil, err
 		}
-		p.cache.Set(string(authzID), accessibleReposB)
+		p.cache.Set(account.AccountID, accessibleReposB)
 	}
 
 	perms := make(map[api.RepoURI]map[perm.P]bool)
@@ -223,9 +238,9 @@ func (p *GitLabAuthzProvider) getCachedAccessList(authzID perm.AuthzID) (map[api
 }
 
 // fetchUserAccessList fetches the list of repositories that are readable to a user from the GitLab API.
-func (p *GitLabAuthzProvider) fetchUserAccessList(ctx context.Context, authzID perm.AuthzID) (map[api.RepoURI]struct{}, error) {
+func (p *GitLabAuthzProvider) fetchUserAccessList(ctx context.Context, glUserID string) (map[api.RepoURI]struct{}, error) {
 	q := make(url.Values)
-	q.Add("sudo", string(authzID))
+	q.Add("sudo", glUserID)
 	q.Add("per_page", "100")
 
 	var allProjs []*gitlab.Project
@@ -233,7 +248,7 @@ func (p *GitLabAuthzProvider) fetchUserAccessList(ctx context.Context, authzID p
 	var pageURL = "projects?" + q.Encode()
 	for {
 		if iters >= 100 && iters%100 == 0 {
-			log15.Warn("Excessively many GitLab API requests to fetch complete user authz list", "iters", iters, "authzID", authzID, "host", p.clientURL.String())
+			log15.Warn("Excessively many GitLab API requests to fetch complete user authz list", "iters", iters, "gitlabUserID", glUserID, "host", p.clientURL.String())
 		}
 
 		projs, nextPageURL, err := p.client.ListProjects(ctx, pageURL)
