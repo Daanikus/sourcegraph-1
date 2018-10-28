@@ -77,7 +77,7 @@ type AuthzProvider interface {
 	// are public/private, and (3) a cache of some sort.
 	RepoPerms(ctx context.Context, userAccount *extsvc.ExternalAccount, repos map[Repo]struct{}) (map[api.RepoURI]map[P]bool, error)
 
-	GetAccount(ctx context.Context, user *types.User, current []*extsvc.ExternalAccount) (mine *extsvc.ExternalAccount, isNew bool)
+	GetAccount(ctx context.Context, user *types.User, current []*extsvc.ExternalAccount) (mine *extsvc.ExternalAccount, isNew bool, err error)
 }
 
 // IdentityToAuthzIDMapper maps UserIDs (from a AuthnProvider) to AuthzIDs (to a AuthzProvider).

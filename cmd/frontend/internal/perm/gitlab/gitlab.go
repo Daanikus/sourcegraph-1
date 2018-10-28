@@ -1,4 +1,4 @@
-package perm
+package gitlab
 
 import (
 	"context"
@@ -63,7 +63,7 @@ type cacheVal struct {
 type GitLabAuthzProviderOp struct {
 	BaseURL                  *url.URL
 	IdentityServiceID        string
-	identityServiceType      string
+	IdentityServiceType      string
 	GitLabIdentityProviderID string
 	SudoToken                string
 	RepoPathPattern          string
@@ -82,7 +82,7 @@ func NewGitLabAuthzProvider(op GitLabAuthzProviderOp) *GitLabAuthzProvider {
 		cache:                    op.MockCache,
 		identityServiceID:        op.IdentityServiceID,
 		identityServiceType:      op.IdentityServiceType,
-		gitlabIdentityProviderID: op.GitLabIdentityPRoviderID,
+		gitlabIdentityProviderID: op.GitLabIdentityProviderID,
 	}
 	if p.cache == nil {
 		p.cache = rcache.NewWithTTL(fmt.Sprintf("gitlabAuthz:%s", op.BaseURL.String()), int(math.Ceil(op.CacheTTL.Seconds())))
@@ -220,18 +220,18 @@ func reposByMatchPattern(mt matchType, matchString string, repos map[perm.Repo]s
 
 // getCachedAccessList returns the list of repositories accessible to a user from the cache and
 // whether the cache entry exists.
-func (p *GitLabAuthzProvider) getCachedAccessList(authzID perm.AuthzID) (map[api.RepoURI]struct{}, bool) {
+func (p *GitLabAuthzProvider) getCachedAccessList(accountID string) (map[api.RepoURI]struct{}, bool) {
 
 	// TODO(beyang): trigger best-effort fetch in background if ttl is getting close (but avoid dup refetches)
 
-	cachedReposB, exists := p.cache.Get(string(authzID))
+	cachedReposB, exists := p.cache.Get(accountID)
 	if !exists {
 		return nil, false
 	}
 	var r cacheVal
 	if err := json.Unmarshal(cachedReposB, &r); err != nil {
 		log15.Warn("Failed to unmarshal repo perm cache entry", "err", err.Error())
-		p.cache.Delete(string(authzID))
+		p.cache.Delete(accountID)
 		return nil, false
 	}
 	return r.repos, true

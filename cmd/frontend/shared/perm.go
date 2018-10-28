@@ -17,12 +17,12 @@ import (
 
 func init() {
 	conf.ContributeValidator(func(cfg schema.SiteConfiguration) []string {
-		_, _, _, _, seriousProblems, warnings := providersFromConfig(&cfg)
+		_, _, seriousProblems, warnings := providersFromConfig(&cfg)
 		return append(seriousProblems, warnings...)
 	})
 	conf.Watch(func() {
-		permissionsAllowByDefault, authnProviders, authzProviders, identityMappers, _, _ := providersFromConfig(conf.Get())
-		perm.SetProviders(permissionsAllowByDefault, authnProviders, authzProviders, identityMappers)
+		permissionsAllowByDefault, authzProviders, _, _ := providersFromConfig(conf.Get())
+		perm.SetProviders(permissionsAllowByDefault, nil, authzProviders, nil)
 	})
 }
 
@@ -89,17 +89,46 @@ func providersFromConfig(cfg *schema.SiteConfiguration) (
 			ttl = time.Hour * 24
 		}
 
-		if mockNewGitLabAuthzProvider != nil {
-			authzProviders = append(authzProviders,
-				mockNewGitLabAuthzProvider(glURL, gl.Token, gl.RepositoryPathPattern, gl.PermissionsMatcher, ttl, nil))
-		} else {
-			authzProviders = append(authzProviders,
-				permgl.NewGitLabAuthzProvider(glURL, gl.Token, gl.RepositoryPathPattern, gl.PermissionsMatcher, ttl, nil))
+		if gl.PermissionsAuthnProvider == nil {
+			seriousProblems = append(seriousProblems, "No `permissions.authnProvider` specified for GitLab connection.")
+			continue
 		}
+
+		authzProviders = append(authzProviders,
+			NewGitLabAuthzProvider(permgl.GitLabAuthzProviderOp{
+				BaseURL:                  glURL,
+				IdentityServiceID:        gl.PermissionsAuthnProvider.ServiceID,
+				IdentityServiceType:      gl.PermissionsAuthnProvider.Type,
+				GitLabIdentityProviderID: gl.PermissionsAuthnProvider.GitlabProvider,
+				SudoToken:                gl.Token,
+				RepoPathPattern:          gl.RepositoryPathPattern,
+				MatchPattern:             gl.PermissionsMatcher,
+				CacheTTL:                 ttl,
+				MockCache:                nil,
+			}),
+		)
 	}
 
-	return permissionsAllowByDefault, authnProviders, authzProviders, identityMappers, seriousProblems, warnings
+	return permissionsAllowByDefault, authzProviders, seriousProblems, warnings
 }
+
+// func getAuthnServiceIDForGitLab(cfg schema.SiteConfiguration, glCfg *schema.GitLabConnection) string {
+// 	if glCfg.PermissionsAuthnProvider == nil {
+// 		return ""
+// 	}
+// 	for _, authnProvider := range cfg.AuthProviders {
+// 		switch glCfg.PermissionsAuthnProvider.Type {
+// 		case "saml":
+// 			if glCfg.PermissionsAuthnProvider.Issuer == authnProvider.Saml.Issuer {
+// 				// TODO
+// 			}
+// 		case "openidconnect":
+// 			if glCfg.PermissionsAuthnProvider.IdentityProviderIssuer == authnProvider.Openidconnect.IdentityProviderIssuer {
+// 				// TODO
+// 			}
+// 		}
+// 	}
+// }
 
 func configHasOnlyExternalAuth(cfg *schema.SiteConfiguration) bool {
 	for _, p := range cfg.AuthProviders {
@@ -110,4 +139,5 @@ func configHasOnlyExternalAuth(cfg *schema.SiteConfiguration) bool {
 	return true
 }
 
-var mockNewGitLabAuthzProvider func(baseURL *url.URL, sudoToken, repoPathPattern, matchPattern string, ttl time.Duration, cache interface{}) perm.AuthzProvider
+// NewGitLabAuthzProvider is a mockable constructor for new GitLabAuthzProvider instances.
+var NewGitLabAuthzProvider = permgl.NewGitLabAuthzProvider

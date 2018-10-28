@@ -151,16 +151,17 @@ type GitHubConnection struct {
 	Url                         string   `json:"url"`
 }
 type GitLabConnection struct {
-	Certificate                 string   `json:"certificate,omitempty"`
-	GitURLType                  string   `json:"gitURLType,omitempty"`
-	InitialRepositoryEnablement bool     `json:"initialRepositoryEnablement,omitempty"`
-	PermissionsIgnore           bool     `json:"permissions.ignore,omitempty"`
-	PermissionsMatcher          string   `json:"permissions.matcher,omitempty"`
-	PermissionsTtl              string   `json:"permissions.ttl,omitempty"`
-	ProjectQuery                []string `json:"projectQuery,omitempty"`
-	RepositoryPathPattern       string   `json:"repositoryPathPattern,omitempty"`
-	Token                       string   `json:"token"`
-	Url                         string   `json:"url"`
+	Certificate                 string                    `json:"certificate,omitempty"`
+	GitURLType                  string                    `json:"gitURLType,omitempty"`
+	InitialRepositoryEnablement bool                      `json:"initialRepositoryEnablement,omitempty"`
+	PermissionsAuthnProvider    *PermissionsAuthnProvider `json:"permissions.authnProvider,omitempty"`
+	PermissionsIgnore           bool                      `json:"permissions.ignore,omitempty"`
+	PermissionsMatcher          string                    `json:"permissions.matcher,omitempty"`
+	PermissionsTtl              string                    `json:"permissions.ttl,omitempty"`
+	ProjectQuery                []string                  `json:"projectQuery,omitempty"`
+	RepositoryPathPattern       string                    `json:"repositoryPathPattern,omitempty"`
+	Token                       string                    `json:"token"`
+	Url                         string                    `json:"url"`
 }
 type GitoliteConnection struct {
 	Blacklist                  string `json:"blacklist,omitempty"`
@@ -234,6 +235,13 @@ type OpenIDConnectAuthProvider struct {
 // ParentSourcegraph description: URL to fetch unreachable repository details from. Defaults to "https://sourcegraph.com"
 type ParentSourcegraph struct {
 	Url string `json:"url,omitempty"`
+}
+
+// PermissionsAuthnProvider description: Identifies the authentication provider used to sign into the GitLab instance. This should correspond to one of the items in `auth.providers`. This field is required if permissions are enabled.
+type PermissionsAuthnProvider struct {
+	GitlabProvider string `json:"gitlabProvider"`
+	ServiceID      string `json:"serviceID"`
+	Type           string `json:"type"`
 }
 type Phabricator struct {
 	Repos []*Repos `json:"repos,omitempty"`

@@ -706,6 +706,27 @@ const SiteSchemaJSON = `{
             "The TTL of how long to cache permissions data. This is 3 hours by default.\n\nDecreasing the TTL will increase the load on the code host API. If you have X repos on your instance, it will take ~X/100 API requests to fetch the complete list for 1 user.  If you have Y users, you will incur X*Y/100 API requests per cache refresh period.\n\nIf set to zero, Sourcegraph will sync a user's entire accessible repository list on every request (NOT recommended).",
           "type": "string",
           "default": "3h"
+        },
+        "permissions.authnProvider": {
+          "type": "object",
+          "description":
+            "Identifies the authentication provider used to sign into the GitLab instance. This should correspond to one of the items in ` + "`" + `auth.providers` + "`" + `. This field is required if permissions are enabled.",
+          "additionalProperties": false,
+          "required": ["type", "serviceID", "gitlabProvider"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "The type of the authentication provider. Should equal the type field of one of the items in ` + "`" + `auth.providers` + "`" + `"
+            },
+            "serviceID": {
+              "type": "string",
+              "description": "Identifies which authentication provider in ` + "`" + `auth.providers` + "`" + ` to use. The value of this depends on the type of authentication provider. TODO(beyang): have a more robust way to link this to a specific authn provider."
+            },
+            "gitlabProvider": {
+              "type": "string",
+              "description": "The provider name that identifies the authentication provider to GitLab. This is the name passed to the ` + "`" + `?provider=` + "`" + ` query parameter in calls to the GitLab Users API."
+            }
+          }
         }
       }
     },

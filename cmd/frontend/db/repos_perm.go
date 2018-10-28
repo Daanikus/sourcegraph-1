@@ -79,7 +79,10 @@ func getFilteredRepoURIs(ctx context.Context, repos map[perm.Repo]struct{}, p pe
 			if len(unverified) == 0 {
 				break
 			}
-			acct, isNew := authzProvider.GetAccount(ctx, usr, accts)
+			acct, isNew, err := authzProvider.GetAccount(ctx, usr, accts)
+			if err != nil {
+				return err
+			}
 			if isNew { // If new account, save it so we remember it later.
 				err := ExternalAccounts.AssociateUserAndSave(ctx, usr.ID, acct.ExternalAccountSpec, acct.ExternalAccountData)
 				if err != nil {
