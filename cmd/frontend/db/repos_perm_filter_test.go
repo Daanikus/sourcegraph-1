@@ -7,6 +7,7 @@ import (
 
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/perm"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/types"
+	"github.com/sourcegraph/sourcegraph/pkg/actor"
 	"github.com/sourcegraph/sourcegraph/pkg/api"
 	"github.com/sourcegraph/sourcegraph/pkg/extsvc"
 )
@@ -14,6 +15,7 @@ import (
 func Test_authzFilter(t *testing.T) {
 	type queryTestCase struct {
 		description        string
+		isAuthenticated    bool
 		userAccounts       []*extsvc.ExternalAccount
 		repos              []*types.Repo
 		perm               perm.P
@@ -33,28 +35,38 @@ func Test_authzFilter(t *testing.T) {
 				serviceID:   "https://gitlab.mine/",
 				serviceType: "gitlab",
 				repos: map[api.RepoURI]struct{}{
-					"gitlab.mine/u1/r0":     struct{}{},
-					"gitlab.mine/u2/r0":     struct{}{},
-					"gitlab.mine/public/r0": struct{}{},
+					"gitlab.mine/u1/r0":            struct{}{},
+					"gitlab.mine/u2/r0":            struct{}{},
+					"gitlab.mine/sharedPrivate/r0": struct{}{},
+					"gitlab.mine/public/r0":        struct{}{},
 				},
 				perms: map[extsvc.ExternalAccount]map[api.RepoURI]map[perm.P]bool{
 					*acct(1, "gitlab", "https://gitlab.mine/", "u1"): map[api.RepoURI]map[perm.P]bool{
-						"gitlab.mine/u1/r0":     map[perm.P]bool{perm.Read: true},
-						"gitlab.mine/u2/r0":     map[perm.P]bool{},
-						"gitlab.mine/public/r0": map[perm.P]bool{perm.Read: true},
+						"gitlab.mine/u1/r0":            map[perm.P]bool{perm.Read: true},
+						"gitlab.mine/u2/r0":            map[perm.P]bool{},
+						"gitlab.mine/sharedPrivate/r0": map[perm.P]bool{perm.Read: true},
+						"gitlab.mine/public/r0":        map[perm.P]bool{perm.Read: true},
 					},
 					*acct(2, "gitlab", "https://gitlab.mine/", "u2"): map[api.RepoURI]map[perm.P]bool{
-						"gitlab.mine/u1/r0":     map[perm.P]bool{},
-						"gitlab.mine/u2/r0":     map[perm.P]bool{perm.Read: true},
-						"gitlab.mine/public/r0": map[perm.P]bool{perm.Read: true},
+						"gitlab.mine/u1/r0":            map[perm.P]bool{},
+						"gitlab.mine/u2/r0":            map[perm.P]bool{perm.Read: true},
+						"gitlab.mine/sharedPrivate/r0": map[perm.P]bool{perm.Read: true},
+						"gitlab.mine/public/r0":        map[perm.P]bool{perm.Read: true},
+					},
+					extsvc.ExternalAccount{}: map[api.RepoURI]map[perm.P]bool{
+						"gitlab.mine/u1/r0":            map[perm.P]bool{},
+						"gitlab.mine/u2/r0":            map[perm.P]bool{},
+						"gitlab.mine/sharedPrivate/r0": map[perm.P]bool{},
+						"gitlab.mine/public/r0":        map[perm.P]bool{perm.Read: true},
 					},
 				},
 			},
 		},
 		queries: []queryTestCase{
 			{
-				description:  "u1 can read its own repo",
-				userAccounts: []*extsvc.ExternalAccount{acct(1, "gitlab", "https://gitlab.mine/", "u1")},
+				description:     "u1 can read its own repo",
+				isAuthenticated: true,
+				userAccounts:    []*extsvc.ExternalAccount{acct(1, "gitlab", "https://gitlab.mine/", "u1")},
 				repos: []*types.Repo{
 					{URI: "gitlab.mine/u1/r0"},
 				},
@@ -63,44 +75,55 @@ func Test_authzFilter(t *testing.T) {
 				},
 				perm: perm.Read,
 			}, {
-				description:  "u1 not allowed to read u2's repo",
-				userAccounts: []*extsvc.ExternalAccount{acct(1, "gitlab", "https://gitlab.mine/", "u1")},
+				description:     "u1 not allowed to read u2's repo",
+				isAuthenticated: true,
+				userAccounts:    []*extsvc.ExternalAccount{acct(1, "gitlab", "https://gitlab.mine/", "u1")},
 				repos: []*types.Repo{
 					{URI: "gitlab.mine/u1/r0"},
 					{URI: "gitlab.mine/u2/r0"},
+					{URI: "gitlab.mine/sharedPrivate/r0"},
 					{URI: "gitlab.mine/public/r0"},
 				},
 				expFilteredRepos: []*types.Repo{
 					{URI: "gitlab.mine/u1/r0"},
+					{URI: "gitlab.mine/sharedPrivate/r0"},
 					{URI: "gitlab.mine/public/r0"},
 				},
 				perm: perm.Read,
 			}, {
-				description:  "u2 not allowed to read u0's repo",
-				userAccounts: []*extsvc.ExternalAccount{acct(2, "gitlab", "https://gitlab.mine/", "u2")},
+				description:     "u2 not allowed to read u0's repo",
+				isAuthenticated: true,
+				userAccounts:    []*extsvc.ExternalAccount{acct(2, "gitlab", "https://gitlab.mine/", "u2")},
 				repos: []*types.Repo{
 					{URI: "gitlab.mine/u1/r0"},
 					{URI: "gitlab.mine/u2/r0"},
+					{URI: "gitlab.mine/sharedPrivate/r0"},
 					{URI: "gitlab.mine/public/r0"},
 				},
 				expFilteredRepos: []*types.Repo{
 					{URI: "gitlab.mine/u2/r0"},
+					{URI: "gitlab.mine/sharedPrivate/r0"},
 					{URI: "gitlab.mine/public/r0"},
 				},
 				perm: perm.Read,
 			}, {
-				description:  "u99 not allowed to read anyone's repo",
-				userAccounts: []*extsvc.ExternalAccount{acct(99, "gitlab", "https://gitlab.mine/", "u99")},
+				description:     "u99 not allowed to read anyone's repo",
+				isAuthenticated: true,
+				userAccounts:    []*extsvc.ExternalAccount{acct(99, "gitlab", "https://gitlab.mine/", "u99")},
 				repos: []*types.Repo{
 					{URI: "gitlab.mine/u1/r0"},
 					{URI: "gitlab.mine/u2/r0"},
+					{URI: "gitlab.mine/sharedPrivate/r0"},
 					{URI: "gitlab.mine/public/r0"},
 				},
-				expFilteredRepos: []*types.Repo{},
-				perm:             perm.Read,
+				expFilteredRepos: []*types.Repo{
+					{URI: "gitlab.mine/public/r0"},
+				},
+				perm: perm.Read,
 			}, {
-				description:  "u99 can read unmanaged repo",
-				userAccounts: []*extsvc.ExternalAccount{acct(99, "gitlab", "https://gitlab.mine/", "u99")},
+				description:     "u99 can read unmanaged repo",
+				isAuthenticated: true,
+				userAccounts:    []*extsvc.ExternalAccount{acct(99, "gitlab", "https://gitlab.mine/", "u99")},
 				repos: []*types.Repo{
 					{URI: "other.mine/r"},
 				},
@@ -109,16 +132,51 @@ func Test_authzFilter(t *testing.T) {
 				},
 				perm: perm.Read,
 			}, {
-				description:  "u1 can read its own, public, and unmanaged repos",
-				userAccounts: []*extsvc.ExternalAccount{acct(1, "gitlab", "https://gitlab.mine/", "u1")},
+				description:     "u1 can read its own, public, and unmanaged repos",
+				isAuthenticated: true,
+				userAccounts:    []*extsvc.ExternalAccount{acct(1, "gitlab", "https://gitlab.mine/", "u1")},
 				repos: []*types.Repo{
 					{URI: "gitlab.mine/u1/r0"},
 					{URI: "gitlab.mine/u2/r0"},
+					{URI: "gitlab.mine/sharedPrivate/r0"},
 					{URI: "gitlab.mine/public/r0"},
 					{URI: "otherHost/r0"},
 				},
 				expFilteredRepos: []*types.Repo{
 					{URI: "gitlab.mine/u1/r0"},
+					{URI: "gitlab.mine/sharedPrivate/r0"},
+					{URI: "gitlab.mine/public/r0"},
+					{URI: "otherHost/r0"},
+				},
+				perm: perm.Read,
+			}, {
+				description:     "authenticated but 0 accounts can read public anad unmanaged repos",
+				isAuthenticated: true,
+				userAccounts:    nil,
+				repos: []*types.Repo{
+					{URI: "gitlab.mine/u1/r0"},
+					{URI: "gitlab.mine/u2/r0"},
+					{URI: "gitlab.mine/sharedPrivate/r0"},
+					{URI: "gitlab.mine/public/r0"},
+					{URI: "otherHost/r0"},
+				},
+				expFilteredRepos: []*types.Repo{
+					{URI: "gitlab.mine/public/r0"},
+					{URI: "otherHost/r0"},
+				},
+				perm: perm.Read,
+			}, {
+				description:     "unauthenticated can read public and unmanaged repos",
+				isAuthenticated: false,
+				userAccounts:    nil,
+				repos: []*types.Repo{
+					{URI: "gitlab.mine/u1/r0"},
+					{URI: "gitlab.mine/u2/r0"},
+					{URI: "gitlab.mine/sharedPrivate/r0"},
+					{URI: "gitlab.mine/public/r0"},
+					{URI: "otherHost/r0"},
+				},
+				expFilteredRepos: []*types.Repo{
 					{URI: "gitlab.mine/public/r0"},
 					{URI: "otherHost/r0"},
 				},
@@ -174,7 +232,8 @@ func Test_authzFilter(t *testing.T) {
 		},
 		queries: []queryTestCase{
 			{
-				description: "u1 can read its own repos, but not others'",
+				description:     "u1 can read its own repos, but not others'",
+				isAuthenticated: true,
 				userAccounts: []*extsvc.ExternalAccount{
 					acct(1, "gitlab", "https://gitlab0.mine/", "u1"),
 					acct(1, "gitlab", "https://gitlab1.mine/", "u1"),
@@ -249,7 +308,8 @@ func Test_authzFilter(t *testing.T) {
 		},
 		queries: []queryTestCase{
 			{
-				description: "u1 can read its own repos, but not others'",
+				description:     "u1 can read its own repos, but not others'",
+				isAuthenticated: true,
 				userAccounts: []*extsvc.ExternalAccount{
 					acct(1, "gitlab", "https://gitlab0.mine/", "u1"),
 					acct(1, "gitlab", "https://gitlab1.mine/", "u1"),
@@ -301,15 +361,16 @@ func Test_authzFilter(t *testing.T) {
 					extsvc.ExternalAccount{}: map[api.RepoURI]map[perm.P]bool{
 						"gitlab.mine/u1/r0":     map[perm.P]bool{},
 						"gitlab.mine/u2/r0":     map[perm.P]bool{},
-						"gitlab.mine/public/r0": map[perm.P]bool{},
+						"gitlab.mine/public/r0": map[perm.P]bool{perm.Read: true},
 					},
 				},
 			},
 		},
 		queries: []queryTestCase{
 			{
-				description:  "new ext account should be created",
-				userAccounts: []*extsvc.ExternalAccount{acct(1, "saml", "https://okta.mine/", "u1")},
+				description:     "new ext account should be created",
+				isAuthenticated: true,
+				userAccounts:    []*extsvc.ExternalAccount{acct(1, "saml", "https://okta.mine/", "u1")},
 				repos: []*types.Repo{
 					{URI: "gitlab.mine/u1/r0"},
 					{URI: "gitlab.mine/u2/r0"},
@@ -327,39 +388,65 @@ func Test_authzFilter(t *testing.T) {
 				}},
 			},
 			{
-				description:  "new ext account should not be created for user that doesn't exist",
-				userAccounts: []*extsvc.ExternalAccount{acct(1, "saml", "https://okta.mine/", "u99")},
+				description:     "new ext account should not be created for user that doesn't exist",
+				isAuthenticated: true,
+				userAccounts:    []*extsvc.ExternalAccount{acct(1, "saml", "https://okta.mine/", "u99")},
 				repos: []*types.Repo{
 					{URI: "gitlab.mine/u1/r0"},
 					{URI: "gitlab.mine/u2/r0"},
 					{URI: "gitlab.mine/public/r0"},
 				},
-				expFilteredRepos: []*types.Repo{},
-				perm:             perm.Read,
+				expFilteredRepos: []*types.Repo{
+					{URI: "gitlab.mine/public/r0"},
+				},
+				perm: perm.Read,
 			},
 			{
-				description:  "new ext account should not be created when service ID not ok",
-				userAccounts: []*extsvc.ExternalAccount{acct(1, "saml", "https://rando.mine/", "u1")},
+				description:     "new ext account should not be created when service ID not ok",
+				isAuthenticated: true,
+				userAccounts:    []*extsvc.ExternalAccount{acct(1, "saml", "https://rando.mine/", "u1")},
 				repos: []*types.Repo{
 					{URI: "gitlab.mine/u1/r0"},
 					{URI: "gitlab.mine/u2/r0"},
 					{URI: "gitlab.mine/public/r0"},
 				},
-				expFilteredRepos: []*types.Repo{},
-				perm:             perm.Read,
+				expFilteredRepos: []*types.Repo{
+					{URI: "gitlab.mine/public/r0"},
+				},
+				perm: perm.Read,
+			},
+			{
+				description:     "unauthenticated user",
+				isAuthenticated: false,
+				userAccounts:    nil,
+				repos: []*types.Repo{
+					{URI: "gitlab.mine/u1/r0"},
+					{URI: "gitlab.mine/u2/r0"},
+					{URI: "gitlab.mine/public/r0"},
+				},
+				expFilteredRepos: []*types.Repo{
+					{URI: "gitlab.mine/public/r0"},
+				},
+				perm: perm.Read,
 			},
 		},
 	}}
 
-	for _, test := range tests {
-		Mocks.Users.GetByCurrentAuthUser = func(ctx context.Context) (*types.User, error) {
-			return &types.User{}, nil
-		}
+	// No dependence on user data
+	Mocks.Users.GetByCurrentAuthUser = func(ctx context.Context) (*types.User, error) {
+		return &types.User{}, nil
+	}
 
+	for _, test := range tests {
 		t.Logf("Running test %q", test.description)
 		perm.SetProviders(test.permsAllowByDefault, nil, test.authzProviders, nil)
 		for _, q := range test.queries {
 			t.Logf("Running query %q", q.description)
+
+			ctx := context.Background()
+			if q.isAuthenticated {
+				ctx = actor.WithActor(ctx, &actor.Actor{UID: 1})
+			}
 
 			var newUserAccounts []extsvc.ExternalAccountSpec
 			Mocks.ExternalAccounts.AssociateUserAndSave = func(userID int32, spec extsvc.ExternalAccountSpec, data extsvc.ExternalAccountData) error {
@@ -370,7 +457,6 @@ func Test_authzFilter(t *testing.T) {
 				return q.userAccounts, nil
 			}
 
-			ctx := context.Background()
 			filteredRepos, err := authzFilter(ctx, q.repos, q.perm)
 			if err != nil {
 				t.Fatal(err)
@@ -440,6 +526,9 @@ func (m *MockAuthzProvider) RepoPerms(ctx context.Context, acct *extsvc.External
 	repos, _ = m.Repos(ctx, repos)
 
 	if acct == nil {
+		acct = &extsvc.ExternalAccount{}
+	}
+	if _, existsInPerms := m.perms[*acct]; !existsInPerms {
 		acct = &extsvc.ExternalAccount{}
 	}
 

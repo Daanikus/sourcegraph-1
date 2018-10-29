@@ -7,6 +7,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/types"
 	"github.com/sourcegraph/sourcegraph/pkg/actor"
 	"github.com/sourcegraph/sourcegraph/pkg/api"
+	"github.com/sourcegraph/sourcegraph/pkg/extsvc"
 )
 
 var mockAuthzFilter func(ctx context.Context, repos []*types.Repo, p perm.P) ([]*types.Repo, error)
@@ -55,15 +56,22 @@ func isInternalActor(ctx context.Context) bool {
 func getFilteredRepoURIs(ctx context.Context, repos map[perm.Repo]struct{}, p perm.P) (
 	accepted map[api.RepoURI]struct{}, acceptAll bool, err error,
 ) {
-	usr, err := Users.GetByCurrentAuthUser(ctx)
-	if err != nil {
-		return nil, false, err
-	}
-	accts, err := ExternalAccounts.List(ctx, ExternalAccountsListOptions{
-		UserID: usr.ID,
-	})
-	if err != nil {
-		return nil, false, err
+	var (
+		currentUser *types.User
+		accts       []*extsvc.ExternalAccount
+	)
+	if perm.NumAuthzProviders() > 0 && actor.FromContext(ctx).IsAuthenticated() {
+		var err error
+		currentUser, err = Users.GetByCurrentAuthUser(ctx)
+		if err != nil {
+			return nil, false, err
+		}
+		accts, err = ExternalAccounts.List(ctx, ExternalAccountsListOptions{
+			UserID: currentUser.ID,
+		})
+		if err != nil {
+			return nil, false, err
+		}
 	}
 
 	accepted = make(map[api.RepoURI]struct{})
@@ -79,12 +87,12 @@ func getFilteredRepoURIs(ctx context.Context, repos map[perm.Repo]struct{}, p pe
 			if len(unverified) == 0 {
 				break
 			}
-			acct, isNew, err := authzProvider.GetAccount(ctx, usr, accts)
+			acct, isNew, err := authzProvider.GetAccount(ctx, currentUser, accts)
 			if err != nil {
 				return err
 			}
-			if isNew { // If new account, save it so we remember it later.
-				err := ExternalAccounts.AssociateUserAndSave(ctx, usr.ID, acct.ExternalAccountSpec, acct.ExternalAccountData)
+			if currentUser != nil && isNew { // If new account, save it so we remember it later.
+				err := ExternalAccounts.AssociateUserAndSave(ctx, currentUser.ID, acct.ExternalAccountSpec, acct.ExternalAccountData)
 				if err != nil {
 					return err
 				}
@@ -120,66 +128,3 @@ func getFilteredRepoURIs(ctx context.Context, repos map[perm.Repo]struct{}, p pe
 
 	return accepted, false, nil
 }
-
-/*
-// getFilteredRepoURIs returns a subset of repos (`accepted`) filtered by whether the current user
-// has the specified permission on those repos. If the return value `acceptAll` is true, all repos
-// in the input set should be regarded as a member of the filtered set and the value of `accepted`
-// should be disregarded.
-func getFilteredRepoURIs(ctx context.Context, repos map[perm.Repo]struct{}, p perm.P) (
-	accepted map[api.RepoURI]struct{}, acceptAll bool, err error,
-) {
-	accepted = make(map[api.RepoURI]struct{})
-	unverified := make(map[perm.Repo]struct{})
-	for repo := range repos {
-		unverified[repo] = struct{}{}
-	}
-
-	providersMu.RLock()
-	defer providersMu.RUnlock()
-Outer:
-	for _, authnProvider := range authnProviders {
-		id, isAdmin, err := authnProvider.CurrentIdentity(ctx)
-		if err != nil {
-			return nil, false, err
-		}
-		if isAdmin {
-			return nil, true, nil
-		}
-		for _, identityToAuthzIDMapper := range identityToAuthzIDMappers {
-			for _, authzProvider := range authzProviders {
-				if len(unverified) == 0 {
-					break Outer
-				}
-
-				authzID := identityToAuthzIDMapper.AuthzID(id, authzProvider)
-				perms, err := authzProvider.RepoPerms(ctx, authzID, unverified)
-				if err != nil {
-					return nil, false, err
-				}
-
-				newUnverified := make(map[perm.Repo]struct{})
-				for unverifiedRepo := range unverified {
-					repoPerms, ok := perms[unverifiedRepo.URI]
-					if !ok {
-						newUnverified[unverifiedRepo] = struct{}{}
-						continue
-					}
-					if repoPerms[p] {
-						accepted[unverifiedRepo.URI] = struct{}{}
-					}
-				}
-				unverified = newUnverified
-			}
-		}
-	}
-
-	if permissionsAllowByDefault {
-		for r := range unverified {
-			accepted[r.URI] = struct{}{}
-		}
-	}
-
-	return accepted, false, nil
-}
-*/

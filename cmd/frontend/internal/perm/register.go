@@ -31,6 +31,11 @@ func DoWithAuthzProviders(f func(p []AuthzProvider) error) error {
 	defer providersMu.RUnlock()
 	return f(authzProviders)
 }
+func NumAuthzProviders() int {
+	providersMu.RLock()
+	defer providersMu.RUnlock()
+	return len(authzProviders)
+}
 
 func AllowByDefault() bool {
 	return permissionsAllowByDefault
