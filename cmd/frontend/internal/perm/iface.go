@@ -69,6 +69,9 @@ type AuthzProvider interface {
 	// permissions derive from this AuthzProvider. If a repo does not exist in the output
 	// permissions map, that means the repo's permissions are not handled by this AuthzProvider.
 	//
+	// RepoPerms should accept a nil value for userAccount, in which case it should return the set
+	// of permissions for an unauthenticated user.
+	//
 	// Design note: this is a better interface than ListAllRepos, because in some cases, the list of
 	// all repos may be very long (especially if the returned list includes public repos). RepoPerms
 	// is a sufficient interface for all current use cases and leaves up to the implementation which
