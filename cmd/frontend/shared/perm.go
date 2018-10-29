@@ -1,13 +1,11 @@
 package shared
 
 import (
-	"context"
 	"fmt"
 	"net/url"
 	"strings"
 	"time"
 
-	"github.com/sourcegraph/sourcegraph/cmd/frontend/db"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/perm"
 	permgl "github.com/sourcegraph/sourcegraph/cmd/frontend/internal/perm/gitlab"
 	"github.com/sourcegraph/sourcegraph/pkg/conf"
@@ -24,16 +22,6 @@ func init() {
 		permissionsAllowByDefault, authzProviders, _, _ := providersFromConfig(conf.Get())
 		perm.SetProviders(permissionsAllowByDefault, nil, authzProviders, nil)
 	})
-}
-
-type StandardAuthnProvider struct{}
-
-func (m StandardAuthnProvider) CurrentIdentity(ctx context.Context) (perm.UserID, bool, error) {
-	usr, err := db.Users.GetByCurrentAuthUser(ctx)
-	if err != nil {
-		return "", false, err
-	}
-	return perm.UserID(usr.Username), usr.SiteAdmin, nil
 }
 
 // providersFromConfig returns the set of permission-related providers derived from the site config.
@@ -107,23 +95,7 @@ func providersFromConfig(cfg *schema.SiteConfiguration) (
 	return permissionsAllowByDefault, authzProviders, seriousProblems, warnings
 }
 
-// func getAuthnServiceIDForGitLab(cfg schema.SiteConfiguration, glCfg *schema.GitLabConnection) string {
-// 	if glCfg.PermissionsAuthnProvider == nil {
-// 		return ""
-// 	}
-// 	for _, authnProvider := range cfg.AuthProviders {
-// 		switch glCfg.PermissionsAuthnProvider.Type {
-// 		case "saml":
-// 			if glCfg.PermissionsAuthnProvider.Issuer == authnProvider.Saml.Issuer {
-// 				// TODO
-// 			}
-// 		case "openidconnect":
-// 			if glCfg.PermissionsAuthnProvider.IdentityProviderIssuer == authnProvider.Openidconnect.IdentityProviderIssuer {
-// 				// TODO
-// 			}
-// 		}
-// 	}
-// }
-
 // NewGitLabAuthzProvider is a mockable constructor for new GitLabAuthzProvider instances.
-var NewGitLabAuthzProvider = permgl.NewGitLabAuthzProvider
+var NewGitLabAuthzProvider = func(op permgl.GitLabAuthzProviderOp) perm.AuthzProvider {
+	return permgl.NewGitLabAuthzProvider(op)
+}

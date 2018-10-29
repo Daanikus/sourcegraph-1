@@ -99,11 +99,13 @@ func NewGitLabAuthzProvider(op GitLabAuthzProviderOp) *GitLabAuthzProvider {
 }
 
 func (p *GitLabAuthzProvider) RepoPerms(ctx context.Context, account *extsvc.ExternalAccount, repos map[perm.Repo]struct{}) (map[api.RepoURI]map[perm.P]bool, error) {
+	// TODO(beyang): handle nil account
+
 	myRepos, _ := p.Repos(ctx, repos)
 	var accessibleRepos map[api.RepoURI]struct{}
 	if r, exists := p.getCachedAccessList(account.AccountID); exists {
 		accessibleRepos = r
-	} else {
+	} else if account.ServiceID == p.codeHost.ServiceID() && account.ServiceType == p.codeHost.ServiceType() {
 		var err error
 		accessibleRepos, err = p.fetchUserAccessList(ctx, account.AccountID)
 		if err != nil {
