@@ -261,6 +261,8 @@ func reposByMatchPattern(mt matchType, matchString string, repos map[perm.Repo]s
 // whether the cache entry exists.
 func (p *GitLabAuthzProvider) getCachedAccessList(accountID string) (map[api.RepoURI]struct{}, bool) {
 
+	return nil, false // DEBUG: disable cache
+
 	// TODO(beyang): trigger best-effort fetch in background if ttl is getting close (but avoid dup refetches)
 
 	cachedReposB, exists := p.cache.Get(accountID)

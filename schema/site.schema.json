@@ -648,7 +648,7 @@
         },
         "token": {
           "description":
-            "A GitLab personal access token with \"api\" scope. If this is not a sudo-level token, then you must set `permissions.ignore` to true.",
+            "A GitLab personal access token with \"api\" and \"sudo\" scopes. If this token does not have \"sudo\" scope, then you must set `permissions.ignore` to true.",
           "type": "string",
           "pattern": "^[^<>]+$"
         },

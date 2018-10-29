@@ -54,15 +54,6 @@ func providersFromConfig(cfg *schema.SiteConfiguration) (
 		}
 	}()
 
-	// Warn if native auth is enabled and any code host permissions are enabled.
-	if !configHasOnlyExternalAuth(cfg) {
-		for _, gl := range cfg.Gitlab {
-			if !gl.PermissionsIgnore {
-				warnings = append(warnings, fmt.Sprintf("Native authentication is enabled and a GitLabConnection %q does not have `permissions.ignore` set to true. Sourcegraph assumes its username is the same as the username on the code host when enforcing permissions. With native authentication, Sourcegraph usernames may not be the same as the code host username, which is a security issue. Please consider configuring Sourcegraph to use the same sign-in mechanism that is used for the code host, or set `permissions.ignore` to true to explicitly ignore GitLab repository permissions.", gl.Url))
-			}
-		}
-	}
-
 	// Authorization (i.e., permissions) providers
 	for _, gl := range cfg.Gitlab {
 		if gl.PermissionsIgnore {
@@ -83,10 +74,15 @@ func providersFromConfig(cfg *schema.SiteConfiguration) (
 			seriousProblems = append(seriousProblems, fmt.Sprintf("GitLab connection %q `permission.matcher` includes an interior wildcard \"*\", which will be interpreted as a string literal, rather than a pattern matcher. Only the prefix \"*/\" or the suffix \"/*\" is supported for pattern matching.", gl.Url))
 		}
 
-		ttl, err := time.ParseDuration(gl.PermissionsTtl)
-		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("Could not parse time duration %q, falling back to 24 hours.", gl.PermissionsTtl))
-			ttl = time.Hour * 24
+		var ttl time.Duration
+		if gl.PermissionsTtl == "" {
+			ttl = time.Hour * 3
+		} else {
+			ttl, err = time.ParseDuration(gl.PermissionsTtl)
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("Could not parse time duration %q, falling back to 3 hours.", gl.PermissionsTtl))
+				ttl = time.Hour * 3
+			}
 		}
 
 		op := permgl.GitLabAuthzProviderOp{
@@ -128,15 +124,6 @@ func providersFromConfig(cfg *schema.SiteConfiguration) (
 // 		}
 // 	}
 // }
-
-func configHasOnlyExternalAuth(cfg *schema.SiteConfiguration) bool {
-	for _, p := range cfg.AuthProviders {
-		if p.Saml == nil && p.Openidconnect == nil && p.HttpHeader == nil {
-			return false
-		}
-	}
-	return true
-}
 
 // NewGitLabAuthzProvider is a mockable constructor for new GitLabAuthzProvider instances.
 var NewGitLabAuthzProvider = permgl.NewGitLabAuthzProvider
