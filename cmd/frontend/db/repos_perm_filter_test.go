@@ -144,6 +144,9 @@ func Test_authzFilter2(t *testing.T) {
 			// TODO
 			return nil
 		}
+		Mocks.Users.GetByCurrentAuthUser = func(ctx context.Context) (*types.User, error) {
+			return &types.User{}, nil
+		}
 
 		t.Logf("Running test %q", test.description)
 		perm.SetProviders(test.permsAllowByDefault, nil, test.authzProviders, nil)
