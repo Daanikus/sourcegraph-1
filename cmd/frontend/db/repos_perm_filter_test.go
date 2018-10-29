@@ -1,4 +1,4 @@
-package perm
+package db
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/pkg/api"
 )
 
-func TestFilter(t *testing.T) {
+func Test_authzFilter(t *testing.T) {
 	type queryTestCase struct {
 		description      string
 		mockID           MockIDContextItem
