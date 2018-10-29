@@ -71,12 +71,16 @@ type GitLabAuthzProviderOp struct {
 	IdentityServiceID        string
 	IdentityServiceType      string
 	GitLabIdentityProviderID string
-	SudoToken                string
-	RepoPathPattern          string
-	MatchPattern             string
-	CacheTTL                 time.Duration
-	MockCache                pcache
-	UseNativeUsername        bool
+
+	// SudoToken is an access tokens with sudo *and* api scope.
+	//
+	// 🚨 SECURITY: This value contains secret information that must not be shown to non-site-admins.
+	SudoToken         string
+	RepoPathPattern   string
+	MatchPattern      string
+	CacheTTL          time.Duration
+	MockCache         pcache
+	UseNativeUsername bool
 }
 
 func NewGitLabAuthzProvider(op GitLabAuthzProviderOp) *GitLabAuthzProvider {

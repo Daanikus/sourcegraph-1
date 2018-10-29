@@ -689,42 +689,30 @@ const SiteSchemaJSON = `{
             "Defines whether repositories from this GitLab instance should be enabled and cloned when they are first seen by Sourcegraph. If false, the site admin must explicitly enable GitLab repositories (in the site admin area) to clone them and make them searchable on Sourcegraph. If true, they will be enabled and cloned immediately (subject to rate limiting by GitLab); site admins can still disable them explicitly, and they'll remain disabled.",
           "type": "boolean"
         },
-        "permissions.ignore": {
-          "description":
-            "If true, ignores GitLab permissions. This will make every repository from this GitLab host accessible to every authenticated user. If the access token is not a sudo token, you must set this option to true.",
-          "type": "boolean",
-          "default": false
-        },
-        "permissions.matcher": {
-          "description":
-            "Specifies a pattern used to match repository paths that belong to this GitLab instance. The pattern must begin with \"*\\/\" (suffix match) or end with \"\\/*\" (prefix match). It is important that this pattern matches *all* repositories that come from this code host, because repositories that are not matched to a code host are by default accessible to all users. If left empty, the ` + "`" + `external_service_id` + "`" + ` column of the ` + "`" + `repo` + "`" + ` DB table will be used to match repositories with this code host.",
-          "type": "string",
-          "default": ""
-        },
-        "permissions.ttl": {
-          "description":
-            "The TTL of how long to cache permissions data. This is 3 hours by default.\n\nDecreasing the TTL will increase the load on the code host API. If you have X repos on your instance, it will take ~X/100 API requests to fetch the complete list for 1 user.  If you have Y users, you will incur X*Y/100 API requests per cache refresh period.\n\nIf set to zero, Sourcegraph will sync a user's entire accessible repository list on every request (NOT recommended).",
-          "type": "string",
-          "default": "3h"
-        },
-        "permissions.authnProvider": {
+        "authz": {
+          "description": "If non-null, enables GitLab authz checks. This requires that the value of ` + "`" + `token` + "`" + ` be an access token with \"sudo\" and \"api\" scopes.",
           "type": "object",
-          "description":
-            "Identifies the authentication provider used to sign into the GitLab instance. This should correspond to one of the items in ` + "`" + `auth.providers` + "`" + `. This field is required if permissions are enabled.",
           "additionalProperties": false,
-          "required": ["type", "serviceID", "gitlabProvider"],
+          "required": ["configID", "gitlabProvider"],
           "properties": {
-            "type": {
+            "configID": {
               "type": "string",
-              "description": "The type of the authentication provider. Should equal the type field of one of the items in ` + "`" + `auth.providers` + "`" + `"
-            },
-            "serviceID": {
-              "type": "string",
-              "description": "Identifies which authentication provider in ` + "`" + `auth.providers` + "`" + ` to use. The value of this depends on the type of authentication provider. TODO(beyang): have a more robust way to link this to a specific authn provider."
+              "description": "Identifies the authentication provider by the value of its ` + "`" + `configID` + "`" + ` field."
             },
             "gitlabProvider": {
               "type": "string",
               "description": "The provider name that identifies the authentication provider to GitLab. This is the name passed to the ` + "`" + `?provider=` + "`" + ` query parameter in calls to the GitLab Users API."
+            },
+            "matcher": {
+              "description":
+                "Specifies a pattern used to match repository paths that belong to this GitLab instance. The pattern must begin with \"*\\/\" (suffix match) or end with \"\\/*\" (prefix match). It is important that this pattern matches *all* repositories that come from this code host, because repositories that are not matched to a code host are by default accessible to all users. If left empty, the ` + "`" + `external_service_id` + "`" + ` column of the ` + "`" + `repo` + "`" + ` DB table will be used to match repositories with this code host.",
+              "type": "string"
+            },
+            "ttl": {
+              "description":
+                "The TTL of how long to cache permissions data. This is 3 hours by default.\n\nDecreasing the TTL will increase the load on the code host API. If you have X repos on your instance, it will take ~X/100 API requests to fetch the complete list for 1 user.  If you have Y users, you will incur X*Y/100 API requests per cache refresh period.\n\nIf set to zero, Sourcegraph will sync a user's entire accessible repository list on every request (NOT recommended).",
+              "type": "string",
+              "default": "3h"
             }
           }
         }
@@ -964,6 +952,10 @@ const SiteSchemaJSON = `{
           "const": "openidconnect"
         },
         "displayName": { "$ref": "#/definitions/AuthProviderCommon/properties/displayName" },
+        "configID": {
+          "description": "An identifier that can be used to reference this authentication provider in other parts of the config. For example, in configuration for a code host, you may want to designate this authentication provider as the identity provider for the code host.",
+          "type": "string"
+        },
         "issuer": {
           "description": "The URL of the OpenID Connect issuer.\n\nFor Google Apps: https://accounts.google.com",
           "type": "string",
@@ -1005,6 +997,10 @@ const SiteSchemaJSON = `{
         "type": {
           "type": "string",
           "const": "saml"
+        },
+        "configID": {
+          "description": "An identifier that can be used to reference this authentication provider in other parts of the config. For example, in configuration for a code host, you may want to designate this authentication provider as the identity provider for the code host.",
+          "type": "string"
         },
         "displayName": { "$ref": "#/definitions/AuthProviderCommon/properties/displayName" },
         "serviceProviderIssuer": {

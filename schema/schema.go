@@ -84,6 +84,13 @@ func (v *AuthProviders) UnmarshalJSON(data []byte) error {
 	return fmt.Errorf("tagged union type must have a %q property whose value is one of %s", "type", []string{"builtin", "saml", "openidconnect", "http-header"})
 }
 
+// Authz description: If non-null, enables GitLab authz checks. This requires that the value of `token` be an access token with "sudo" and "api" scopes.
+type Authz struct {
+	ConfigID       string `json:"configID"`
+	GitlabProvider string `json:"gitlabProvider"`
+	Matcher        string `json:"matcher,omitempty"`
+	Ttl            string `json:"ttl,omitempty"`
+}
 type BitbucketServerConnection struct {
 	Certificate                 string `json:"certificate,omitempty"`
 	ExcludePersonalRepositories bool   `json:"excludePersonalRepositories,omitempty"`
@@ -151,17 +158,14 @@ type GitHubConnection struct {
 	Url                         string   `json:"url"`
 }
 type GitLabConnection struct {
-	Certificate                 string                    `json:"certificate,omitempty"`
-	GitURLType                  string                    `json:"gitURLType,omitempty"`
-	InitialRepositoryEnablement bool                      `json:"initialRepositoryEnablement,omitempty"`
-	PermissionsAuthnProvider    *PermissionsAuthnProvider `json:"permissions.authnProvider,omitempty"`
-	PermissionsIgnore           bool                      `json:"permissions.ignore,omitempty"`
-	PermissionsMatcher          string                    `json:"permissions.matcher,omitempty"`
-	PermissionsTtl              string                    `json:"permissions.ttl,omitempty"`
-	ProjectQuery                []string                  `json:"projectQuery,omitempty"`
-	RepositoryPathPattern       string                    `json:"repositoryPathPattern,omitempty"`
-	Token                       string                    `json:"token"`
-	Url                         string                    `json:"url"`
+	Authz                       *Authz   `json:"authz,omitempty"`
+	Certificate                 string   `json:"certificate,omitempty"`
+	GitURLType                  string   `json:"gitURLType,omitempty"`
+	InitialRepositoryEnablement bool     `json:"initialRepositoryEnablement,omitempty"`
+	ProjectQuery                []string `json:"projectQuery,omitempty"`
+	RepositoryPathPattern       string   `json:"repositoryPathPattern,omitempty"`
+	Token                       string   `json:"token"`
+	Url                         string   `json:"url"`
 }
 type GitoliteConnection struct {
 	Blacklist                  string `json:"blacklist,omitempty"`
@@ -226,6 +230,7 @@ type Metadata struct {
 type OpenIDConnectAuthProvider struct {
 	ClientID           string `json:"clientID"`
 	ClientSecret       string `json:"clientSecret"`
+	ConfigID           string `json:"configID,omitempty"`
 	DisplayName        string `json:"displayName,omitempty"`
 	Issuer             string `json:"issuer"`
 	RequireEmailDomain string `json:"requireEmailDomain,omitempty"`
@@ -235,13 +240,6 @@ type OpenIDConnectAuthProvider struct {
 // ParentSourcegraph description: URL to fetch unreachable repository details from. Defaults to "https://sourcegraph.com"
 type ParentSourcegraph struct {
 	Url string `json:"url,omitempty"`
-}
-
-// PermissionsAuthnProvider description: Identifies the authentication provider used to sign into the GitLab instance. This should correspond to one of the items in `auth.providers`. This field is required if permissions are enabled.
-type PermissionsAuthnProvider struct {
-	GitlabProvider string `json:"gitlabProvider"`
-	ServiceID      string `json:"serviceID"`
-	Type           string `json:"type"`
 }
 type Phabricator struct {
 	Repos []*Repos `json:"repos,omitempty"`
@@ -266,6 +264,7 @@ type ReviewBoard struct {
 //
 // Note: if you are using IdP-initiated login, you must have *at most one* SAMLAuthProvider in the `auth.providers` array.
 type SAMLAuthProvider struct {
+	ConfigID                                 string `json:"configID,omitempty"`
 	DisplayName                              string `json:"displayName,omitempty"`
 	IdentityProviderMetadata                 string `json:"identityProviderMetadata,omitempty"`
 	IdentityProviderMetadataURL              string `json:"identityProviderMetadataURL,omitempty"`

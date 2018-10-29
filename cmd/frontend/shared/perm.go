@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/auth"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/perm"
 	permgl "github.com/sourcegraph/sourcegraph/cmd/frontend/internal/perm/gitlab"
 	"github.com/sourcegraph/sourcegraph/pkg/conf"
@@ -90,6 +91,12 @@ func providersFromConfig(cfg *schema.SiteConfiguration) (
 	}
 
 	return permissionsAllowByDefault, authzProviders, seriousProblems, warnings
+}
+
+func FindAuthnProvider() auth.Provider {
+	for _, authnProvider := range auth.Providers() {
+		// authnInfo := authnProvider.CachedInfo()
+	}
 }
 
 // NewGitLabAuthzProvider is a mockable constructor for new GitLabAuthzProvider instances.
