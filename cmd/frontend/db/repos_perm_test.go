@@ -16,6 +16,7 @@ func Test_getBySQL_permissionsCheck(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
+	defer func() { mockAuthzFilter = nil }()
 
 	ctx := dbtesting.TestContext(t)
 
