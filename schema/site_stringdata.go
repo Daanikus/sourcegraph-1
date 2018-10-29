@@ -693,13 +693,13 @@ const SiteSchemaJSON = `{
           "description": "If non-null, enables GitLab authz checks. This requires that the value of ` + "`" + `token` + "`" + ` be an access token with \"sudo\" and \"api\" scopes.",
           "type": "object",
           "additionalProperties": false,
-          "required": ["configID", "gitlabProvider"],
+          "required": ["authnConfigID", "authnGitLabProvider"],
           "properties": {
-            "configID": {
+            "authnConfigID": {
               "type": "string",
               "description": "Identifies the authentication provider by the value of its ` + "`" + `configID` + "`" + ` field."
             },
-            "gitlabProvider": {
+            "authnGitLabProvider": {
               "type": "string",
               "description": "The provider name that identifies the authentication provider to GitLab. This is the name passed to the ` + "`" + `?provider=` + "`" + ` query parameter in calls to the GitLab Users API."
             },

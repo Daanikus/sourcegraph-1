@@ -51,6 +51,7 @@ func (p *provider) Refresh(ctx context.Context) error {
 
 func (p *provider) getCachedInfoAndError() (*auth.ProviderInfo, error) {
 	info := auth.ProviderInfo{
+		ConfigID:    p.config.ConfigID,
 		ServiceID:   p.config.Issuer,
 		ClientID:    p.config.ClientID,
 		DisplayName: p.config.DisplayName,

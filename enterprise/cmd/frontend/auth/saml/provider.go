@@ -66,6 +66,7 @@ func providerIDQuery(pc *schema.SAMLAuthProvider, multiple bool) url.Values {
 
 func (p *provider) getCachedInfoAndError() (*auth.ProviderInfo, error) {
 	info := auth.ProviderInfo{
+		ConfigID:    p.config.ConfigID,
 		DisplayName: p.config.DisplayName,
 		AuthenticationURL: (&url.URL{
 			Path:     path.Join(auth.AuthURLPrefix, "saml", "login"),

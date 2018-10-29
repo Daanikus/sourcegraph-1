@@ -86,10 +86,10 @@ func (v *AuthProviders) UnmarshalJSON(data []byte) error {
 
 // Authz description: If non-null, enables GitLab authz checks. This requires that the value of `token` be an access token with "sudo" and "api" scopes.
 type Authz struct {
-	ConfigID       string `json:"configID"`
-	GitlabProvider string `json:"gitlabProvider"`
-	Matcher        string `json:"matcher,omitempty"`
-	Ttl            string `json:"ttl,omitempty"`
+	AuthnConfigID       string `json:"authnConfigID"`
+	AuthnGitLabProvider string `json:"authnGitLabProvider"`
+	Matcher             string `json:"matcher,omitempty"`
+	Ttl                 string `json:"ttl,omitempty"`
 }
 type BitbucketServerConnection struct {
 	Certificate                 string `json:"certificate,omitempty"`

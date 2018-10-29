@@ -45,7 +45,7 @@ func providersFromConfig(cfg *schema.SiteConfiguration) (
 
 	// Authorization (i.e., permissions) providers
 	for _, gl := range cfg.Gitlab {
-		if gl.PermissionsIgnore {
+		if gl.Authz == nil {
 			continue
 		}
 
@@ -56,47 +56,60 @@ func providersFromConfig(cfg *schema.SiteConfiguration) (
 			seriousProblems = append(seriousProblems, fmt.Sprintf("Could not parse URL for GitLab instance %q: %s", gl.Url, err))
 			continue // omit authz provider if could not parse URL
 		}
-		if innerMatcher := strings.TrimSuffix(strings.TrimPrefix(gl.PermissionsMatcher, "*/"), "/*"); strings.Contains(innerMatcher, "*") {
+		if innerMatcher := strings.TrimSuffix(strings.TrimPrefix(gl.Authz.Matcher, "*/"), "/*"); strings.Contains(innerMatcher, "*") {
 			seriousProblems = append(seriousProblems, fmt.Sprintf("GitLab connection %q `permission.matcher` includes an interior wildcard \"*\", which will be interpreted as a string literal, rather than a pattern matcher. Only the prefix \"*/\" or the suffix \"/*\" is supported for pattern matching.", gl.Url))
 		}
 
 		var ttl time.Duration
-		if gl.PermissionsTtl == "" {
+		if gl.Authz.Ttl == "" {
 			ttl = time.Hour * 3
 		} else {
-			ttl, err = time.ParseDuration(gl.PermissionsTtl)
+			ttl, err = time.ParseDuration(gl.Authz.Ttl)
 			if err != nil {
-				warnings = append(warnings, fmt.Sprintf("Could not parse time duration %q, falling back to 3 hours.", gl.PermissionsTtl))
+				warnings = append(warnings, fmt.Sprintf("Could not parse time duration %q, falling back to 3 hours.", gl.Authz.Ttl))
 				ttl = time.Hour * 3
 			}
 		}
 
 		op := permgl.GitLabAuthzProviderOp{
-			BaseURL:         glURL,
-			SudoToken:       gl.Token,
-			RepoPathPattern: gl.RepositoryPathPattern,
-			MatchPattern:    gl.PermissionsMatcher,
-			CacheTTL:        ttl,
-			MockCache:       nil,
+			BaseURL:                  glURL,
+			SudoToken:                gl.Token,
+			RepoPathPattern:          gl.RepositoryPathPattern,
+			MatchPattern:             gl.Authz.Matcher,
+			GitLabIdentityProviderID: gl.Authz.AuthnGitLabProvider,
+			CacheTTL:                 ttl,
+			MockCache:                nil,
 		}
-		if gl.PermissionsAuthnProvider == nil {
-			seriousProblems = append(seriousProblems, "No `permissions.authnProvider` specified for GitLab connection. Falling back to using username matching, which is insecure.")
+		if gl.Authz.AuthnConfigID == "" {
+			// If no authn provider is specified, we fall back to insecure username matching, which
+			// should only be used for testing purposes. In the future when we support sign-in via
+			// GitLab, we can check if that is enabled and instead fall back to that.
+			seriousProblems = append(seriousProblems, "`authz.AuthnConfigID` was not specified. Falling back to using username matching, which is insecure.")
 			op.UseNativeUsername = true
+		} else if gl.Authz.AuthnGitLabProvider == "" {
+			seriousProblems = append(seriousProblems, "`authz.AuthnGitLabProvider` was not specified, which means GitLab users cannot be resolved.")
 		} else {
-			op.IdentityServiceID = gl.PermissionsAuthnProvider.ServiceID
-			op.IdentityServiceType = gl.PermissionsAuthnProvider.Type
-			op.GitLabIdentityProviderID = gl.PermissionsAuthnProvider.GitlabProvider
+			if authnProvider := findAuthnProvider(gl.Authz.AuthnConfigID); authnProvider != nil {
+				op.IdentityServiceType = authnProvider.ConfigID().Type
+				op.IdentityServiceID = authnProvider.CachedInfo().ServiceID
+			} else {
+				seriousProblems = append(seriousProblems, fmt.Sprintf("Could not find item in `auth.providers` with config ID %q", gl.Authz.AuthnConfigID))
+			}
 		}
+
 		authzProviders = append(authzProviders, NewGitLabAuthzProvider(op))
 	}
 
 	return permissionsAllowByDefault, authzProviders, seriousProblems, warnings
 }
 
-func FindAuthnProvider() auth.Provider {
+func findAuthnProvider(configID string) auth.Provider {
 	for _, authnProvider := range auth.Providers() {
-		// authnInfo := authnProvider.CachedInfo()
+		if authnProvider.CachedInfo().ConfigID == configID {
+			return authnProvider
+		}
 	}
+	return nil
 }
 
 // NewGitLabAuthzProvider is a mockable constructor for new GitLabAuthzProvider instances.
