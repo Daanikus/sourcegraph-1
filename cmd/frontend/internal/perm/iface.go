@@ -77,6 +77,12 @@ type AuthzProvider interface {
 	// are public/private, and (3) a cache of some sort.
 	RepoPerms(ctx context.Context, userAccount *extsvc.ExternalAccount, repos map[Repo]struct{}) (map[api.RepoURI]map[P]bool, error)
 
+	// GetAccount returns the external account to use to identify the user to this authz provider,
+	// taking as input the current list of external accounts associated with the user (which may
+	// contain the external account to use or which may be necessary to compute one if it doesn't
+	// exist). If no such account exists, an implementation can return (nil, false, nil) or (nil,
+	// false, err) where the error is the error returned by some external API in trying to determine
+	// the external account.
 	GetAccount(ctx context.Context, user *types.User, current []*extsvc.ExternalAccount) (mine *extsvc.ExternalAccount, isNew bool, err error)
 }
 

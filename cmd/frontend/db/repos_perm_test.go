@@ -36,7 +36,7 @@ func Test_getBySQL_permissionsCheck(t *testing.T) {
 	})
 	{
 		calledFilter := false
-		perm.MockFilter = func(ctx context.Context, repos []*types.Repo, p perm.P) ([]*types.Repo, error) {
+		mockAuthzFilter = func(ctx context.Context, repos []*types.Repo, p perm.P) ([]*types.Repo, error) {
 			calledFilter = true
 			return repos, nil
 		}
@@ -49,12 +49,12 @@ func Test_getBySQL_permissionsCheck(t *testing.T) {
 			t.Errorf("got %v, want %v", gotRepos, allRepos)
 		}
 		if !calledFilter {
-			t.Error("did not call perm.Filter (SECURITY)")
+			t.Error("did not call authzFilter (SECURITY)")
 		}
 	}
 	{
 		calledFilter := false
-		perm.MockFilter = func(ctx context.Context, repos []*types.Repo, p perm.P) ([]*types.Repo, error) {
+		mockAuthzFilter = func(ctx context.Context, repos []*types.Repo, p perm.P) ([]*types.Repo, error) {
 			calledFilter = true
 			return nil, nil
 		}
@@ -67,13 +67,13 @@ func Test_getBySQL_permissionsCheck(t *testing.T) {
 			t.Errorf("got %v, want %v", gotRepos, nil)
 		}
 		if !calledFilter {
-			t.Error("did not call perm.Filter (SECURITY)")
+			t.Error("did not call authzFilter (SECURITY)")
 		}
 	}
 	{
 		calledFilter := false
 		filteredRepos := allRepos[0:1]
-		perm.MockFilter = func(ctx context.Context, repos []*types.Repo, p perm.P) ([]*types.Repo, error) {
+		mockAuthzFilter = func(ctx context.Context, repos []*types.Repo, p perm.P) ([]*types.Repo, error) {
 			calledFilter = true
 			return filteredRepos, nil
 		}
@@ -86,7 +86,7 @@ func Test_getBySQL_permissionsCheck(t *testing.T) {
 			t.Errorf("got %v, want %v", gotRepos, filteredRepos)
 		}
 		if !calledFilter {
-			t.Error("did not call perm.Filter (SECURITY)")
+			t.Error("did not call authzFilter (SECURITY)")
 		}
 	}
 }
