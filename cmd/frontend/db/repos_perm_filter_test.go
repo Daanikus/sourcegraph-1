@@ -7,7 +7,123 @@ import (
 
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/types"
 	"github.com/sourcegraph/sourcegraph/pkg/api"
+	"github.com/sourcegraph/sourcegraph/pkg/extsvc"
 )
+
+func Test_authzFilter2(t *testing.T) {
+	type queryTestCase struct {
+		description      string
+		userAccounts     []*extsvc.ExternalAccount
+		repos            []*types.Repo
+		expFilteredRepos []*types.Repo
+		perm             P
+	}
+	tests := []struct {
+		description         string
+		permsAllowByDefault bool
+		authzProviders      []AuthzProvider
+		queries             []queryTestCase
+	}{{
+		description:         "1 authz provider, 1 authn provider, 1 id mapper",
+		permsAllowByDefault: true,
+		identityMappers:     []IdentityToAuthzIDMapper{IdentityMapper{}},
+		authzProviders: []AuthzProvider{
+			&MockAuthzProvider{
+				repos: map[api.RepoURI]struct{}{
+					"gitlab.mine/u0/r0":     struct{}{},
+					"gitlab.mine/u1/r0":     struct{}{},
+					"gitlab.mine/public/r0": struct{}{},
+				},
+				perms: map[AuthzID]map[api.RepoURI]map[P]bool{
+					"u0": map[api.RepoURI]map[P]bool{
+						"gitlab.mine/u0/r0":     map[P]bool{Read: true},
+						"gitlab.mine/u1/r0":     map[P]bool{},
+						"gitlab.mine/public/r0": map[P]bool{Read: true},
+					},
+					"u1": map[api.RepoURI]map[P]bool{
+						"gitlab.mine/u0/r0":     map[P]bool{},
+						"gitlab.mine/u1/r0":     map[P]bool{Read: true},
+						"gitlab.mine/public/r0": map[P]bool{Read: true},
+					},
+				},
+			},
+		},
+		queries: []queryTestCase{
+			{
+				description: "u0 can read its own repo",
+				mockID:      MockIDContextItem{id: "u0"},
+				repos: []*types.Repo{
+					{URI: "gitlab.mine/u0/r0"},
+				},
+				expFilteredRepos: []*types.Repo{
+					{URI: "gitlab.mine/u0/r0"},
+				},
+				perm: Read,
+			}, {
+				description: "u0 not allowed to read u1's repo",
+				mockID:      MockIDContextItem{id: "u0"},
+				repos: []*types.Repo{
+					{URI: "gitlab.mine/u0/r0"},
+					{URI: "gitlab.mine/u1/r0"},
+					{URI: "gitlab.mine/public/r0"},
+				},
+				expFilteredRepos: []*types.Repo{
+					{URI: "gitlab.mine/u0/r0"},
+					{URI: "gitlab.mine/public/r0"},
+				},
+				perm: Read,
+			}, {
+				description: "u1 not allowed to read u0's repo",
+				mockID:      MockIDContextItem{id: "u1"},
+				repos: []*types.Repo{
+					{URI: "gitlab.mine/u0/r0"},
+					{URI: "gitlab.mine/u1/r0"},
+					{URI: "gitlab.mine/public/r0"},
+				},
+				expFilteredRepos: []*types.Repo{
+					{URI: "gitlab.mine/u1/r0"},
+					{URI: "gitlab.mine/public/r0"},
+				},
+				perm: Read,
+			}, {
+				description: "u99 not allowed to read anyone's repo",
+				mockID:      MockIDContextItem{id: "u99"},
+				repos: []*types.Repo{
+					{URI: "gitlab.mine/u0/r0"},
+					{URI: "gitlab.mine/u1/r0"},
+					{URI: "gitlab.mine/public/r0"},
+				},
+				expFilteredRepos: []*types.Repo{},
+				perm:             Read,
+			}, {
+				description: "u99 can read unmanaged repo",
+				mockID:      MockIDContextItem{id: "u99"},
+				repos: []*types.Repo{
+					{URI: "other.mine/r"},
+				},
+				expFilteredRepos: []*types.Repo{
+					{URI: "other.mine/r"},
+				},
+				perm: Read,
+			}, {
+				description: "u0 can read its own, public, and unmanaged repos",
+				mockID:      MockIDContextItem{id: "u0"},
+				repos: []*types.Repo{
+					{URI: "gitlab.mine/u0/r0"},
+					{URI: "gitlab.mine/u1/r0"},
+					{URI: "gitlab.mine/public/r0"},
+					{URI: "otherHost/r0"},
+				},
+				expFilteredRepos: []*types.Repo{
+					{URI: "gitlab.mine/u0/r0"},
+					{URI: "gitlab.mine/public/r0"},
+					{URI: "otherHost/r0"},
+				},
+				perm: Read,
+			},
+		},
+	}}
+}
 
 func Test_authzFilter(t *testing.T) {
 	type queryTestCase struct {
