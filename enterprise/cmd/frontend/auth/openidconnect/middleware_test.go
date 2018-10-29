@@ -103,7 +103,7 @@ func newOIDCIDServer(t *testing.T, code string, oidcProvider *schema.OpenIDConne
 
 	srv := httptest.NewServer(s)
 
-	auth.SetMockCreateOrUpdateUser(func(u db.NewUser, a db.ExternalAccountSpec) (userID int32, err error) {
+	auth.SetMockCreateOrUpdateUser(func(u db.NewUser, a extsvc.ExternalAccountSpec) (userID int32, err error) {
 		if a.ServiceType == "openidconnect" && a.ServiceID == oidcProvider.Issuer && a.ClientID == testClientID && a.AccountID == testOIDCUser {
 			return 123, nil
 		}
