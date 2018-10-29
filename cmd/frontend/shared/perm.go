@@ -55,9 +55,6 @@ func providersFromConfig(cfg *schema.SiteConfiguration) (
 			seriousProblems = append(seriousProblems, fmt.Sprintf("Could not parse URL for GitLab instance %q: %s", gl.Url, err))
 			continue // omit authz provider if could not parse URL
 		}
-		if !strings.HasSuffix(gl.PermissionsMatcher, "/*") && !strings.HasPrefix(gl.PermissionsMatcher, "*/") {
-			seriousProblems = append(seriousProblems, fmt.Sprintf("GitLab connection %q should specify a `permissions.matcher` string starting with \"*/\" or ending with \"/*\".", gl.Url))
-		}
 		if innerMatcher := strings.TrimSuffix(strings.TrimPrefix(gl.PermissionsMatcher, "*/"), "/*"); strings.Contains(innerMatcher, "*") {
 			seriousProblems = append(seriousProblems, fmt.Sprintf("GitLab connection %q `permission.matcher` includes an interior wildcard \"*\", which will be interpreted as a string literal, rather than a pattern matcher. Only the prefix \"*/\" or the suffix \"/*\" is supported for pattern matching.", gl.Url))
 		}

@@ -44,6 +44,7 @@ func Test_providersFromConfig(t *testing.T) {
 		expWarnings                  []string
 	}{
 		{
+			description: "standard config pointing to okta",
 			cfg: schema.SiteConfiguration{
 				Gitlab: []*schema.GitLabConnection{{
 					PermissionsIgnore:  false,
@@ -75,91 +76,125 @@ func Test_providersFromConfig(t *testing.T) {
 			expSeriousProblems: nil,
 			expWarnings:        nil,
 		},
-		// {
-		// 	cfg: schema.SiteConfiguration{
-		// 		Gitlab: []*schema.GitLabConnection{{
-		// 			PermissionsIgnore:     false,
-		// 			PermissionsMatcher:    "asdf/gitlab.mine/*",
-		// 			PermissionsTtl:        "48h",
-		// 			RepositoryPathPattern: "asdf/{host}/{pathWithNamespace}",
-		// 			Url:                   "https://gitlab.mine",
-		// 			Token:                 "asdf",
-		// 		}},
-		// 	},
-		// 	expPermissionsAllowByDefault: true,
-		// 	expAuthzProviders: []perm.AuthzProvider{
-		// 		newGitLabAuthzProviderParams{
-		// 			Op: gitlab.GitLabAuthzProviderOp{
-		// 				BaseURL:                  mustURLParse(t, "https://gitlab.mine"),
-		// 				IdentityServiceID:        "https://okta.mine/",
-		// 				IdentityServiceType:      "saml",
-		// 				GitLabIdentityProviderID: "okta",
-		// 				MatchPattern:             "gitlab.mine/*",
-		// 				SudoToken:                "asdf",
-		// 				CacheTTL:                 48 * time.Hour,
-		// 			},
-		// 		},
-		// 	},
-		// 	expSeriousProblems: nil,
-		// 	expWarnings:        nil,
-		// },
-		// {
-		// 	cfg: schema.SiteConfiguration{
-		// 		Gitlab: []*schema.GitLabConnection{{
-		// 			PermissionsIgnore:  false,
-		// 			PermissionsMatcher: "",
-		// 			Url:                "https://gitlab.mine",
-		// 			Token:              "asdf",
-		// 		}},
-		// 	},
-		// 	expPermissionsAllowByDefault: false,
-		// 	expAuthnProviders:            []perm.AuthnProvider{StandardAuthnProvider{}},
-		// 	expIdentityMappers:           []perm.IdentityToAuthzIDMapper{perm.IdentityMapper{}},
-		// 	expAuthzProviders: []perm.AuthzProvider{
-		// 		newGitLabAuthzProviderParams{
-		// 			baseURL:   "https://gitlab.mine",
-		// 			sudoToken: "asdf",
-		// 			ttl:       24 * time.Hour,
-		// 		},
-		// 	},
-		// 	expSeriousProblems: []string{
-		// 		"GitLab connection \"https://gitlab.mine\" should specify a `permissions.matcher` string starting with \"*/\" or ending with \"/*\".",
-		// 	},
-		// 	expWarnings: []string{
-		// 		`Could not parse time duration "", falling back to 24 hours.`,
-		// 	},
-		// },
-		// {
-		// 	cfg: schema.SiteConfiguration{
-		// 		Gitlab: []*schema.GitLabConnection{{
-		// 			PermissionsIgnore: false,
-		// 			Url:               "http://not a url",
-		// 		}},
-		// 	},
-		// 	expPermissionsAllowByDefault: false,
-		// 	expAuthnProviders:            []perm.AuthnProvider{StandardAuthnProvider{}},
-		// 	expIdentityMappers:           []perm.IdentityToAuthzIDMapper{perm.IdentityMapper{}},
-		// 	expAuthzProviders:            nil,
-		// 	expSeriousProblems: []string{
-		// 		`Could not parse URL for GitLab instance "http://not a url": parse http://not a url: invalid character " " in host name`,
-		// 	},
-		// 	expWarnings: nil,
-		// },
-		// {
-		// 	cfg: schema.SiteConfiguration{
-		// 		Gitlab: []*schema.GitLabConnection{{
-		// 			PermissionsIgnore: true,
-		// 			Url:               "https://gitlab.mine",
-		// 		}},
-		// 	},
-		// 	expPermissionsAllowByDefault: true,
-		// 	expAuthnProviders:            []perm.AuthnProvider{StandardAuthnProvider{}},
-		// 	expIdentityMappers:           []perm.IdentityToAuthzIDMapper{perm.IdentityMapper{}},
-		// 	expAuthzProviders:            nil,
-		// 	expSeriousProblems:           nil,
-		// 	expWarnings:                  nil,
-		// },
+		{
+			description: "standard config pointing to okta, with RepositoryPathPattern",
+			cfg: schema.SiteConfiguration{
+				Gitlab: []*schema.GitLabConnection{{
+					PermissionsIgnore:  false,
+					PermissionsMatcher: "asdf/gitlab.mine/*",
+					PermissionsTtl:     "48h",
+					PermissionsAuthnProvider: &schema.PermissionsAuthnProvider{
+						ServiceID:      "https://okta.mine/",
+						Type:           "saml",
+						GitlabProvider: "okta",
+					},
+					RepositoryPathPattern: "asdf/{host}/{pathWithNamespace}",
+					Url:                   "https://gitlab.mine",
+					Token:                 "asdf",
+				}},
+			},
+			expPermissionsAllowByDefault: true,
+			expAuthzProviders: []perm.AuthzProvider{
+				newGitLabAuthzProviderParams{
+					Op: gitlab.GitLabAuthzProviderOp{
+						BaseURL:                  mustURLParse(t, "https://gitlab.mine"),
+						IdentityServiceID:        "https://okta.mine/",
+						IdentityServiceType:      "saml",
+						GitLabIdentityProviderID: "okta",
+						MatchPattern:             "asdf/gitlab.mine/*",
+						RepoPathPattern:          "asdf/{host}/{pathWithNamespace}",
+						SudoToken:                "asdf",
+						CacheTTL:                 48 * time.Hour,
+					},
+				},
+			},
+			expSeriousProblems: nil,
+			expWarnings:        nil,
+		},
+		{
+			description: "pointing to okta, no matcher, no ttl",
+			cfg: schema.SiteConfiguration{
+				Gitlab: []*schema.GitLabConnection{{
+					PermissionsIgnore:  false,
+					PermissionsMatcher: "",
+					PermissionsAuthnProvider: &schema.PermissionsAuthnProvider{
+						ServiceID:      "https://okta.mine/",
+						Type:           "saml",
+						GitlabProvider: "okta",
+					},
+					Url:   "https://gitlab.mine",
+					Token: "asdf",
+				}},
+			},
+			expPermissionsAllowByDefault: true,
+			expAuthzProviders: []perm.AuthzProvider{
+				newGitLabAuthzProviderParams{
+					Op: gitlab.GitLabAuthzProviderOp{
+						BaseURL:                  mustURLParse(t, "https://gitlab.mine"),
+						IdentityServiceID:        "https://okta.mine/",
+						IdentityServiceType:      "saml",
+						GitLabIdentityProviderID: "okta",
+						SudoToken:                "asdf",
+						CacheTTL:                 3 * time.Hour,
+					},
+				},
+			},
+			expSeriousProblems: nil,
+			expWarnings:        nil,
+		},
+		{
+			description: "no authn provider specified",
+			cfg: schema.SiteConfiguration{
+				Gitlab: []*schema.GitLabConnection{{
+					PermissionsIgnore: false,
+					Url:               "https://gitlab.mine",
+					Token:             "asdf",
+				}},
+			},
+			expPermissionsAllowByDefault: false,
+			expAuthzProviders: []perm.AuthzProvider{
+				newGitLabAuthzProviderParams{
+					Op: gitlab.GitLabAuthzProviderOp{
+						BaseURL:           mustURLParse(t, "https://gitlab.mine"),
+						SudoToken:         "asdf",
+						CacheTTL:          3 * time.Hour,
+						UseNativeUsername: true,
+					},
+				},
+			},
+			expSeriousProblems: []string{"No `permissions.authnProvider` specified for GitLab connection. Falling back to using username matching, which is insecure."},
+		},
+		{
+			description: "invalid url",
+			cfg: schema.SiteConfiguration{
+				Gitlab: []*schema.GitLabConnection{{
+					PermissionsIgnore: false,
+					Url:               "http://not a url",
+				}},
+			},
+			expPermissionsAllowByDefault: false,
+			expAuthzProviders:            nil,
+			expSeriousProblems: []string{
+				`Could not parse URL for GitLab instance "http://not a url": parse http://not a url: invalid character " " in host name`,
+			},
+			expWarnings: nil,
+		},
+		{
+			description: "ignore permissions",
+			cfg: schema.SiteConfiguration{
+				Gitlab: []*schema.GitLabConnection{{
+					PermissionsIgnore: true,
+					Url:               "https://gitlab.mine",
+				}},
+			},
+			expPermissionsAllowByDefault: true,
+			expAuthzProviders:            nil,
+			expSeriousProblems:           nil,
+			expWarnings:                  nil,
+		},
 	}
+
+	// TODO: test case for no PermissionsAuthnProvider
 
 	for _, test := range tests {
 		permissionsAllowByDefault, authzProviders, seriousProblems, warnings := providersFromConfig(&test.cfg)
