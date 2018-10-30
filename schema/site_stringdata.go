@@ -707,7 +707,7 @@ const SiteSchemaJSON = `{
                 },
                 "type": {
                   "type": "string",
-                  "description": "The type of the targeted authentication provider."
+                  "description": "The ` + "`" + `type` + "`" + ` field of the targeted authentication provider."
                 },
                 "gitlabProvider": {
                   "type": "string",

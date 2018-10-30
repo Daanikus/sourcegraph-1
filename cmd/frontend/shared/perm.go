@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sourcegraph/sourcegraph/cmd/frontend/external/auth"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/perm"
 	permgl "github.com/sourcegraph/sourcegraph/cmd/frontend/internal/perm/gitlab"
 	"github.com/sourcegraph/sourcegraph/pkg/conf"
@@ -71,38 +72,41 @@ func providersFromConfig(cfg *schema.SiteConfiguration) (
 		}
 
 		op := permgl.GitLabAuthzProviderOp{
-			BaseURL:                  glURL,
-			SudoToken:                gl.Token,
-			RepoPathPattern:          gl.RepositoryPathPattern,
-			AuthnConfigID:            gl.Authz.AuthnConfigID,
-			MatchPattern:             gl.Authz.Matcher,
-			GitLabIdentityProviderID: gl.Authz.AuthnGitLabProvider,
-			CacheTTL:                 ttl,
-			MockCache:                nil,
+			BaseURL:         glURL,
+			SudoToken:       gl.Token,
+			RepoPathPattern: gl.RepositoryPathPattern,
+			AuthnConfigID: auth.ProviderConfigID{
+				ID:   gl.Authz.AuthnProvider.ConfigID,
+				Type: gl.Authz.AuthnProvider.Type,
+			},
+			GitLabProvider: gl.Authz.AuthnProvider.GitlabProvider,
+			MatchPattern:   gl.Authz.Matcher,
+			CacheTTL:       ttl,
+			MockCache:      nil,
 		}
-		if gl.Authz.AuthnConfigID == "" {
+		if gl.Authz.AuthnProvider.ConfigID == "" {
 			// If no authn provider is specified, we fall back to insecure username matching, which
 			// should only be used for testing purposes. In the future when we support sign-in via
 			// GitLab, we can check if that is enabled and instead fall back to that.
 			seriousProblems = append(seriousProblems, "`authz.AuthnConfigID` was not specified. Falling back to using username matching, which is insecure.")
 			op.UseNativeUsername = true
-		} else if gl.Authz.AuthnGitLabProvider == "" {
+		} else if gl.Authz.AuthnProvider.GitlabProvider == "" {
 			seriousProblems = append(seriousProblems, "`authz.AuthnGitLabProvider` was not specified, which means GitLab users cannot be resolved.")
 		} else {
 			// Best-effort determine if the authz.authnConfigID field refers to a auth.provider
 			found := false
 			for _, p := range cfg.AuthProviders {
-				if p.Openidconnect != nil && p.Openidconnect.ConfigID == gl.Authz.AuthnConfigID {
+				if p.Openidconnect != nil && p.Openidconnect.ConfigID == gl.Authz.AuthnProvider.ConfigID {
 					found = true
 					break
 				}
-				if p.Saml != nil && p.Saml.ConfigID == gl.Authz.AuthnConfigID {
+				if p.Saml != nil && p.Saml.ConfigID == gl.Authz.AuthnProvider.ConfigID {
 					found = true
 					break
 				}
 			}
 			if !found {
-				seriousProblems = append(seriousProblems, fmt.Sprintf("Could not find item in `auth.providers` with config ID %q", gl.Authz.AuthnConfigID))
+				seriousProblems = append(seriousProblems, fmt.Sprintf("Could not find item in `auth.providers` with config ID %q", gl.Authz.AuthnProvider.ConfigID))
 			}
 		}
 

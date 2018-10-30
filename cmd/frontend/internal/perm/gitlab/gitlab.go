@@ -48,7 +48,7 @@ type GitLabAuthzProvider struct {
 	// authnConfigID is the config identifier that identifies the authentication provider to use
 	// when no GitLab external account exists. It corresponds to the auth.ProviderInfo.ConfigID
 	// field.
-	authnConfigID string
+	authnConfigID auth.ProviderConfigID
 
 	// userNativeUsername, if true, makes this provider compute the correspondence to GitLab user
 	// using the Sourcegraph username. This is highly unsafe (as the username is mutable and not
@@ -65,9 +65,9 @@ type cacheVal struct {
 }
 
 type GitLabAuthzProviderOp struct {
-	BaseURL                  *url.URL
-	AuthnConfigID            string
-	GitLabIdentityProviderID string
+	BaseURL        *url.URL
+	AuthnConfigID  auth.ProviderConfigID
+	GitLabProvider string
 
 	// SudoToken is an access tokens with sudo *and* api scope.
 	//
@@ -89,7 +89,7 @@ func NewGitLabAuthzProvider(op GitLabAuthzProviderOp) *GitLabAuthzProvider {
 		matchPattern:      op.MatchPattern,
 		cache:             op.MockCache,
 		authnConfigID:     op.AuthnConfigID,
-		gitlabProvider:    op.GitLabIdentityProviderID,
+		gitlabProvider:    op.GitLabProvider,
 		useNativeUsername: op.UseNativeUsername,
 	}
 	if p.cache == nil {
