@@ -84,12 +84,18 @@ func (v *AuthProviders) UnmarshalJSON(data []byte) error {
 	return fmt.Errorf("tagged union type must have a %q property whose value is one of %s", "type", []string{"builtin", "saml", "openidconnect", "http-header"})
 }
 
+// AuthnProvider description: Identifies the authentication provider to use to identify users to GitLab.
+type AuthnProvider struct {
+	ConfigID       string `json:"configID"`
+	GitlabProvider string `json:"gitlabProvider"`
+	Type           string `json:"type"`
+}
+
 // Authz description: If non-null, enables GitLab authz checks. This requires that the value of `token` be an access token with "sudo" and "api" scopes.
 type Authz struct {
-	AuthnConfigID       string `json:"authnConfigID"`
-	AuthnGitLabProvider string `json:"authnGitLabProvider"`
-	Matcher             string `json:"matcher,omitempty"`
-	Ttl                 string `json:"ttl,omitempty"`
+	AuthnProvider AuthnProvider `json:"authnProvider"`
+	Matcher       string        `json:"matcher,omitempty"`
+	Ttl           string        `json:"ttl,omitempty"`
 }
 type BitbucketServerConnection struct {
 	Certificate                 string `json:"certificate,omitempty"`

@@ -97,9 +97,9 @@ func getFilteredRepoURIs(ctx context.Context, repos map[perm.Repo]struct{}, p pe
 				}
 			}
 			if providerAcct == nil && currentUser != nil { // no existing external account for authz provider
-				if p, err = authzProvider.FetchAccount(ctx, currentUser, accts); err == nil {
-					providerAcct = p
-					if err := ExternalAccounts.AssociateUserAndSave(ctx, currentUser.ID, acct.ExternalAccountSpec, acct.ExternalAccountData); err != nil {
+				if pr, err := authzProvider.FetchAccount(ctx, currentUser, accts); err == nil {
+					providerAcct = pr
+					if err := ExternalAccounts.AssociateUserAndSave(ctx, currentUser.ID, providerAcct.ExternalAccountSpec, providerAcct.ExternalAccountData); err != nil {
 						return err
 					}
 				} else {

@@ -693,15 +693,27 @@ const SiteSchemaJSON = `{
           "description": "If non-null, enables GitLab authz checks. This requires that the value of ` + "`" + `token` + "`" + ` be an access token with \"sudo\" and \"api\" scopes.",
           "type": "object",
           "additionalProperties": false,
-          "required": ["authnConfigID", "authnGitLabProvider"],
+          "required": ["authnProvider"],
           "properties": {
-            "authnConfigID": {
-              "type": "string",
-              "description": "Identifies the authentication provider by the value of its ` + "`" + `configID` + "`" + ` field."
-            },
-            "authnGitLabProvider": {
-              "type": "string",
-              "description": "The provider name that identifies the authentication provider to GitLab. This is the name passed to the ` + "`" + `?provider=` + "`" + ` query parameter in calls to the GitLab Users API."
+            "authnProvider": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["configID", "type", "gitlabProvider"],
+              "description": "Identifies the authentication provider to use to identify users to GitLab.",
+              "properties": {
+                "configID": {
+                  "type": "string",
+                  "description": "The value of the ` + "`" + `configID` + "`" + ` field of the targeted authentication provider."
+                },
+                "type": {
+                  "type": "string",
+                  "description": "The type of the targeted authentication provider."
+                },
+                "gitlabProvider": {
+                  "type": "string",
+                  "description": "The provider name that identifies the authentication provider to GitLab. This is the name passed to the ` + "`" + `?provider=` + "`" + ` query parameter in calls to the GitLab Users API."
+                }
+              }
             },
             "matcher": {
               "description":

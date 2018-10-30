@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/auth"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/perm"
 	permgl "github.com/sourcegraph/sourcegraph/cmd/frontend/internal/perm/gitlab"
 	"github.com/sourcegraph/sourcegraph/pkg/conf"
@@ -75,6 +74,7 @@ func providersFromConfig(cfg *schema.SiteConfiguration) (
 			BaseURL:                  glURL,
 			SudoToken:                gl.Token,
 			RepoPathPattern:          gl.RepositoryPathPattern,
+			AuthnConfigID:            gl.Authz.AuthnConfigID,
 			MatchPattern:             gl.Authz.Matcher,
 			GitLabIdentityProviderID: gl.Authz.AuthnGitLabProvider,
 			CacheTTL:                 ttl,
@@ -89,10 +89,19 @@ func providersFromConfig(cfg *schema.SiteConfiguration) (
 		} else if gl.Authz.AuthnGitLabProvider == "" {
 			seriousProblems = append(seriousProblems, "`authz.AuthnGitLabProvider` was not specified, which means GitLab users cannot be resolved.")
 		} else {
-			if authnProvider := findAuthnProvider(gl.Authz.AuthnConfigID); authnProvider != nil {
-				op.IdentityServiceType = authnProvider.ConfigID().Type
-				op.IdentityServiceID = authnProvider.CachedInfo().ServiceID
-			} else {
+			// Best-effort determine if the authz.authnConfigID field refers to a auth.provider
+			found := false
+			for _, p := range cfg.AuthProviders {
+				if p.Openidconnect != nil && p.Openidconnect.ConfigID == gl.Authz.AuthnConfigID {
+					found = true
+					break
+				}
+				if p.Saml != nil && p.Saml.ConfigID == gl.Authz.AuthnConfigID {
+					found = true
+					break
+				}
+			}
+			if !found {
 				seriousProblems = append(seriousProblems, fmt.Sprintf("Could not find item in `auth.providers` with config ID %q", gl.Authz.AuthnConfigID))
 			}
 		}
@@ -101,15 +110,6 @@ func providersFromConfig(cfg *schema.SiteConfiguration) (
 	}
 
 	return permissionsAllowByDefault, authzProviders, seriousProblems, warnings
-}
-
-func findAuthnProvider(configID string) auth.Provider {
-	for _, authnProvider := range auth.Providers() {
-		if authnProvider.CachedInfo().ConfigID == configID {
-			return authnProvider
-		}
-	}
-	return nil
 }
 
 // NewGitLabAuthzProvider is a mockable constructor for new GitLabAuthzProvider instances.
