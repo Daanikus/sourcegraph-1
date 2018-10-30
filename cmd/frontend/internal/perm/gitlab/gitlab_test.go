@@ -217,7 +217,7 @@ func (g GitLab_FetchAccount_Test) run(t *testing.T) {
 }
 
 func Test_GitLab_RepoPerms(t *testing.T) {
-	// TODO
+	// NEXT
 }
 
 /*
