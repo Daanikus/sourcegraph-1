@@ -8,12 +8,18 @@ import (
 )
 
 type User struct {
-	ID        int32  `json:"id"`
-	Username  string `json:"username"`
-	Name      string `json:"name"`
-	State     string `json:"state"`
-	AvatarURL string `json:"avatar_url"`
-	WebURL    string `json:"web_url"`
+	ID         int32      `json:"id"`
+	Username   string     `json:"username"`
+	Name       string     `json:"name"`
+	State      string     `json:"state"`
+	AvatarURL  string     `json:"avatar_url"`
+	WebURL     string     `json:"web_url"`
+	Identities []Identity `json:"identities"`
+}
+
+type Identity struct {
+	Provider  string `json:"provider"`
+	ExternUID string `json:"extern_uid"`
 }
 
 func (c *Client) ListUsers(ctx context.Context, urlStr string) (users []*User, nextPageURL *string, err error) {

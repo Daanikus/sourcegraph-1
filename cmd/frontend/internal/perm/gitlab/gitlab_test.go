@@ -2,29 +2,225 @@ package gitlab
 
 import (
 	"context"
+	"log"
 	"net/url"
 	"reflect"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/auth"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/perm"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/types"
-	"github.com/sourcegraph/sourcegraph/pkg/api"
 	"github.com/sourcegraph/sourcegraph/pkg/extsvc"
 	"github.com/sourcegraph/sourcegraph/pkg/extsvc/gitlab"
 	"github.com/sourcegraph/sourcegraph/schema"
 )
 
+func Test_GitLab_FetchAccount(t *testing.T) {
+	tests := []GitLab_FetchAccount_Test{
+		{
+			description: "1 authn provider, basic authz provider",
+			authnProviders: []auth.Provider{
+				mockAuthnProvider{
+					configID:  auth.ProviderConfigID{ID: "okta.mine", Type: "saml"},
+					serviceID: "https://okta.mine/",
+				},
+			},
+			op: GitLabAuthzProviderOp{
+				BaseURL:           mustURL(t, "https://gitlab.mine"),
+				AuthnConfigID:     auth.ProviderConfigID{ID: "okta.mine", Type: "saml"},
+				GitLabProvider:    "okta.mine",
+				UseNativeUsername: false,
+			},
+			calls: []GitLab_FetchAccount_Test_call{
+				{
+					description: "1 account, matches",
+					user:        &types.User{ID: 123},
+					current:     []*extsvc.ExternalAccount{acct(1, "saml", "https://okta.mine/", "bl")},
+					expMine:     acct(123, gitlab.GitLabServiceType, "https://gitlab.mine/", "101"),
+				},
+				{
+					description: "many accounts, none match",
+					user:        &types.User{ID: 123},
+					current: []*extsvc.ExternalAccount{
+						acct(1, "saml", "https://okta.mine/", "nomatch"),
+						acct(1, "saml", "nomatch", "bl"),
+						acct(1, "nomatch", "https://okta.mine/", "bl"),
+					},
+					expMine: nil,
+				},
+				{
+					description: "many accounts, 1 match",
+					user:        &types.User{ID: 123},
+					current: []*extsvc.ExternalAccount{
+						acct(1, "saml", "nomatch", "bl"),
+						acct(1, "nomatch", "https://okta.mine/", "bl"),
+						acct(1, "saml", "https://okta.mine/", "bl"),
+					},
+					expMine: acct(123, gitlab.GitLabServiceType, "https://gitlab.mine/", "101"),
+				},
+				{
+					description: "no user",
+					user:        nil,
+					current:     nil,
+					expMine:     nil,
+				},
+			},
+		},
+		{
+			description:    "0 authn providers, native username",
+			authnProviders: nil,
+			op: GitLabAuthzProviderOp{
+				BaseURL:           mustURL(t, "https://gitlab.mine"),
+				UseNativeUsername: true,
+			},
+			calls: []GitLab_FetchAccount_Test_call{
+				{
+					description: "username match",
+					user:        &types.User{ID: 123, Username: "b.l"},
+					expMine:     acct(123, gitlab.GitLabServiceType, "https://gitlab.mine/", "101"),
+				},
+				{
+					description: "no username match",
+					user:        &types.User{ID: 123, Username: "nomatch"},
+					expMine:     nil,
+				},
+			},
+		},
+		{
+			description:    "0 authn providers, basic authz provider",
+			authnProviders: nil,
+			op: GitLabAuthzProviderOp{
+				BaseURL:           mustURL(t, "https://gitlab.mine"),
+				AuthnConfigID:     auth.ProviderConfigID{ID: "okta.mine", Type: "saml"},
+				GitLabProvider:    "okta.mine",
+				UseNativeUsername: false,
+			},
+			calls: []GitLab_FetchAccount_Test_call{
+				{
+					description: "no matches",
+					user:        &types.User{ID: 123, Username: "b.l"},
+					expMine:     nil,
+				},
+			},
+		},
+		{
+			description: "2 authn providers, basic authz provider",
+			authnProviders: []auth.Provider{
+				mockAuthnProvider{
+					configID:  auth.ProviderConfigID{ID: "okta.mine", Type: "saml"},
+					serviceID: "https://okta.mine/",
+				},
+				mockAuthnProvider{
+					configID:  auth.ProviderConfigID{ID: "onelogin.mine", Type: "openidconnect"},
+					serviceID: "https://onelogin.mine/",
+				},
+			},
+			op: GitLabAuthzProviderOp{
+				BaseURL:           mustURL(t, "https://gitlab.mine"),
+				AuthnConfigID:     auth.ProviderConfigID{ID: "onelogin.mine", Type: "openidconnect"},
+				GitLabProvider:    "onelogin.mine",
+				UseNativeUsername: false,
+			},
+			calls: []GitLab_FetchAccount_Test_call{
+				{
+					description: "1 authn provider matches",
+					user:        &types.User{ID: 123},
+					current:     []*extsvc.ExternalAccount{acct(1, "openidconnect", "https://onelogin.mine/", "bl")},
+					expMine:     acct(123, gitlab.GitLabServiceType, "https://gitlab.mine/", "101"),
+				},
+				{
+					description: "0 authn providers match",
+					user:        &types.User{ID: 123},
+					current:     []*extsvc.ExternalAccount{acct(1, "openidconnect", "https://onelogin.mine/", "nomatch")},
+					expMine:     nil,
+				},
+			},
+		},
+	}
+
+	gitlabMock := mockGitLab{
+		t:          t,
+		maxPerPage: 1,
+		users: []*gitlab.User{
+			{
+				ID:       101,
+				Username: "b.l",
+				Identities: []gitlab.Identity{
+					{Provider: "okta.mine", ExternUID: "bl"},
+					{Provider: "onelogin.mine", ExternUID: "bl"},
+				},
+			},
+			{
+				ID:         102,
+				Username:   "k.l",
+				Identities: []gitlab.Identity{{Provider: "okta.mine", ExternUID: "kl"}},
+			},
+			{
+				ID:         199,
+				Username:   "user-without-extern-id",
+				Identities: nil,
+			},
+		},
+	}
+	gitlab.MockListUsers = gitlabMock.ListUsers
+
+	for _, test := range tests {
+		test.run(t)
+	}
+}
+
+type GitLab_FetchAccount_Test struct {
+	description string
+
+	authnProviders []auth.Provider
+	op             GitLabAuthzProviderOp
+
+	calls []GitLab_FetchAccount_Test_call
+}
+
+type GitLab_FetchAccount_Test_call struct {
+	description string
+
+	user    *types.User
+	current []*extsvc.ExternalAccount
+
+	expMine *extsvc.ExternalAccount
+}
+
+func (g GitLab_FetchAccount_Test) run(t *testing.T) {
+	t.Logf("Test case %q", g.description)
+
+	provs := make(map[auth.Provider]bool)
+	for _, p := range g.authnProviders {
+		provs[p] = true
+	}
+	auth.UpdateProviders(provs)
+
+	ctx := context.Background()
+	authzProvider := NewGitLabAuthzProvider(g.op)
+	for _, c := range g.calls {
+		t.Logf("Call %q", c.description)
+		if acct, err := authzProvider.FetchAccount(ctx, c.user, c.current); err == nil {
+			if acct != nil {
+				// ignore these fields for comparison
+				acct.AuthData = nil
+				acct.AccountData = nil
+			}
+			if !reflect.DeepEqual(acct, c.expMine) {
+				t.Errorf("expected %+v, but got %+v", c.expMine, acct)
+			}
+		} else {
+			t.Errorf("unexpected error: %v", err)
+		}
+	}
+}
+
 func Test_GitLab_RepoPerms(t *testing.T) {
 	// TODO
 }
 
-func Test_GitLab_FetchAccount(t *testing.T) {
-	// TODO
-}
-
+/*
 // TODO: discard this in favor of the more componentized tests above
 func Test_GitLab_RepoPerms(t *testing.T) {
 	tests := []struct {
@@ -258,6 +454,7 @@ func Test_GitLab_RepoPerms(t *testing.T) {
 		}
 	}
 }
+*/
 
 /*
 func Test_GitLab_RepoPerms_cache(t *testing.T) {
@@ -403,18 +600,96 @@ func Test_GitLab_Repos(t *testing.T) {
 // We prefer to do it this way, instead of defining an interface for the GitLab client, because this
 // preserves the ability to jump-to-def around the actual implementation.
 type mockGitLab struct {
-	acls         map[perm.AuthzID][]string
-	projs        map[string]*gitlab.Project
-	t            *testing.T
-	maxPerPage   int
-	madeRequests map[string]int
+	t *testing.T
+
+	acls       map[perm.AuthzID][]string
+	projs      map[string]*gitlab.Project
+	users      []*gitlab.User
+	maxPerPage int
+
+	madeUserReqs    map[string]int
+	madeProjectReqs map[string]int
+}
+
+func (m *mockGitLab) ListUsers(ctx context.Context, urlStr string) (users []*gitlab.User, nextPageURL *string, err error) {
+
+	log.Printf("# ListUsers %s", urlStr)
+
+	if m.madeUserReqs == nil {
+		m.madeUserReqs = make(map[string]int)
+	}
+	m.madeUserReqs[urlStr]++
+
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		m.t.Fatalf("could not parse ListUsers urlStr %q: %s", urlStr, err)
+	}
+
+	var matchingUsers []*gitlab.User
+	for _, user := range m.users {
+		userMatches := true
+		if qExternUID := u.Query().Get("extern_uid"); qExternUID != "" {
+			qProvider := u.Query().Get("provider")
+
+			match := false
+			for _, identity := range user.Identities {
+				if identity.ExternUID == qExternUID && identity.Provider == qProvider {
+					match = true
+					break
+				}
+			}
+			if !match {
+				userMatches = false
+				break
+			}
+		}
+		if qUsername := u.Query().Get("username"); qUsername != "" {
+			if user.Username != qUsername {
+				userMatches = false
+				break
+			}
+		}
+		if userMatches {
+			matchingUsers = append(matchingUsers, user)
+		}
+	}
+
+	// pagination
+	perPage, err := getIntOrDefault(u.Query().Get("per_page"), m.maxPerPage)
+	if err != nil {
+		return nil, nil, err
+	}
+	page, err := getIntOrDefault(u.Query().Get("page"), 1)
+	if err != nil {
+		return nil, nil, err
+	}
+	p := page - 1
+	var (
+		pagedUsers []*gitlab.User
+	)
+	if perPage*p > len(matchingUsers)-1 {
+		pagedUsers = nil
+	} else if perPage*(p+1) > len(matchingUsers)-1 {
+		pagedUsers = matchingUsers[perPage*p:]
+	} else {
+		pagedUsers = matchingUsers[perPage*p : perPage*(p+1)]
+		if perPage*(p+1) <= len(matchingUsers)-1 {
+			newU := *u
+			q := u.Query()
+			q.Set("page", strconv.Itoa(page+1))
+			newU.RawQuery = q.Encode()
+			s := newU.String()
+			nextPageURL = &s
+		}
+	}
+	return pagedUsers, nextPageURL, nil
 }
 
 func (m *mockGitLab) ListProjects(ctx context.Context, urlStr string) (proj []*gitlab.Project, nextPageURL *string, err error) {
-	if m.madeRequests == nil {
-		m.madeRequests = make(map[string]int)
+	if m.madeProjectReqs == nil {
+		m.madeProjectReqs = make(map[string]int)
 	}
-	m.madeRequests[urlStr]++
+	m.madeProjectReqs[urlStr]++
 
 	u, err := url.Parse(urlStr)
 	if err != nil {
@@ -430,6 +705,7 @@ func (m *mockGitLab) ListProjects(ctx context.Context, urlStr string) (proj []*g
 		allProjs[i] = proj
 	}
 
+	// pagination
 	perPage, err := getIntOrDefault(u.Query().Get("per_page"), m.maxPerPage)
 	if err != nil {
 		return nil, nil, err
@@ -437,30 +713,30 @@ func (m *mockGitLab) ListProjects(ctx context.Context, urlStr string) (proj []*g
 	if perPage > m.maxPerPage {
 		perPage = m.maxPerPage
 	}
-	pg, err := getIntOrDefault(u.Query().Get("page"), 1)
+	page, err := getIntOrDefault(u.Query().Get("page"), 1)
 	if err != nil {
 		return nil, nil, err
 	}
-	p := pg - 1
+	p := page - 1
 	var (
-		pageProjs []*gitlab.Project
+		pagedProjs []*gitlab.Project
 	)
 	if perPage*p > len(allProjs)-1 {
-		pageProjs = nil
+		pagedProjs = nil
 	} else if perPage*(p+1) > len(allProjs)-1 {
-		pageProjs = allProjs[perPage*p:]
+		pagedProjs = allProjs[perPage*p:]
 	} else {
-		pageProjs = allProjs[perPage*p : perPage*(p+1)]
+		pagedProjs = allProjs[perPage*p : perPage*(p+1)]
 		if perPage*(p+1) <= len(allProjs)-1 {
 			newU := *u
 			q := u.Query()
-			q.Set("page", strconv.Itoa(pg+1))
+			q.Set("page", strconv.Itoa(page+1))
 			newU.RawQuery = q.Encode()
 			s := newU.String()
 			nextPageURL = &s
 		}
 	}
-	return pageProjs, nextPageURL, nil
+	return pagedProjs, nextPageURL, nil
 }
 
 type mockCache map[string]string
@@ -488,11 +764,11 @@ func acct(userID int32, serviceType, serviceID, accountID string) *extsvc.Extern
 }
 
 type mockAuthnProvider struct {
-	configID  ProviderConfigID
+	configID  auth.ProviderConfigID
 	serviceID string
 }
 
-func (m mockAuthnProvider) ConfigID() ProviderConfigID {
+func (m mockAuthnProvider) ConfigID() auth.ProviderConfigID {
 	return m.configID
 }
 
@@ -506,4 +782,12 @@ func (m mockAuthnProvider) CachedInfo() *auth.ProviderInfo {
 
 func (m mockAuthnProvider) Refresh(ctx context.Context) error {
 	panic("should not be called")
+}
+
+func mustURL(t *testing.T, u string) *url.URL {
+	parsed, err := url.Parse(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return parsed
 }

@@ -76,8 +76,9 @@ type GitLabAuthzProviderOp struct {
 	RepoPathPattern   string
 	MatchPattern      string
 	CacheTTL          time.Duration
-	MockCache         pcache
 	UseNativeUsername bool
+
+	MockCache pcache
 }
 
 func NewGitLabAuthzProvider(op GitLabAuthzProviderOp) *GitLabAuthzProvider {
@@ -166,11 +167,12 @@ func (p *GitLabAuthzProvider) Repos(ctx context.Context, repos map[perm.Repo]str
 }
 
 func (p *GitLabAuthzProvider) FetchAccount(ctx context.Context, user *types.User, current []*extsvc.ExternalAccount) (mine *extsvc.ExternalAccount, err error) {
+	if user == nil {
+		return nil, nil
+	}
+
 	var glUser *gitlab.User
 	if p.useNativeUsername {
-		if user == nil {
-			return nil, nil
-		}
 		glUser, err = p.fetchAccountByUsername(ctx, user.Username)
 	} else {
 		// resolve the GitLab account using the authn provider (specified by p.AuthnConfigID)
@@ -193,6 +195,9 @@ func (p *GitLabAuthzProvider) FetchAccount(ctx context.Context, user *types.User
 	if err != nil {
 		return nil, err
 	}
+	if glUser == nil {
+		return nil, nil
+	}
 
 	jsonGLUser, err := json.Marshal(glUser)
 	if err != nil {
@@ -200,7 +205,7 @@ func (p *GitLabAuthzProvider) FetchAccount(ctx context.Context, user *types.User
 	}
 	accountData := json.RawMessage(jsonGLUser)
 	glExternalAccount := extsvc.ExternalAccount{
-		UserID: glUser.ID,
+		UserID: user.ID,
 		ExternalAccountSpec: extsvc.ExternalAccountSpec{
 			ServiceType: p.codeHost.ServiceType(),
 			ServiceID:   p.codeHost.ServiceID(),
@@ -226,7 +231,7 @@ func (p *GitLabAuthzProvider) fetchAccountByExternalUID(ctx context.Context, uid
 		return nil, fmt.Errorf("failed to determine unique GitLab user for query %q", q.Encode())
 	}
 	if len(glUsers) == 0 {
-		return nil, fmt.Errorf("failed to find a GitLab user matching query %q", q.Encode())
+		return nil, nil
 	}
 	return glUsers[0], nil
 }
@@ -243,7 +248,7 @@ func (p *GitLabAuthzProvider) fetchAccountByUsername(ctx context.Context, userna
 		return nil, fmt.Errorf("failed to determine unique GitLab user for query %q", q.Encode())
 	}
 	if len(glUsers) == 0 {
-		return nil, fmt.Errorf("failed to find a GitLab user matching query %q", q.Encode())
+		return nil, nil
 	}
 	return glUsers[0], nil
 }
