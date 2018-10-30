@@ -11,8 +11,7 @@
   "workspaces": [
     "sourcegraph-extension-api",
     "browser-extensions",
-    "extensions-client-common",
-    "codeintellify"
+    "extensions-client-common"
   ],
   "files": [
     "dist",
