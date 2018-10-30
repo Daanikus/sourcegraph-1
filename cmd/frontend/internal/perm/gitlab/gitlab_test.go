@@ -2,7 +2,6 @@ package gitlab
 
 import (
 	"context"
-	"log"
 	"net/url"
 	"reflect"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/auth"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/perm"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/types"
+	"github.com/sourcegraph/sourcegraph/pkg/api"
 	"github.com/sourcegraph/sourcegraph/pkg/extsvc"
 	"github.com/sourcegraph/sourcegraph/pkg/extsvc/gitlab"
 	"github.com/sourcegraph/sourcegraph/schema"
@@ -201,23 +201,151 @@ func (g GitLab_FetchAccount_Test) run(t *testing.T) {
 	authzProvider := NewGitLabAuthzProvider(g.op)
 	for _, c := range g.calls {
 		t.Logf("Call %q", c.description)
-		if acct, err := authzProvider.FetchAccount(ctx, c.user, c.current); err == nil {
-			if acct != nil {
-				// ignore these fields for comparison
-				acct.AuthData = nil
-				acct.AccountData = nil
-			}
-			if !reflect.DeepEqual(acct, c.expMine) {
-				t.Errorf("expected %+v, but got %+v", c.expMine, acct)
-			}
-		} else {
+		acct, err := authzProvider.FetchAccount(ctx, c.user, c.current)
+		if err != nil {
 			t.Errorf("unexpected error: %v", err)
+			continue
+		}
+		if acct != nil {
+			// ignore these fields for comparison
+			acct.AuthData = nil
+			acct.AccountData = nil
+		}
+		if !reflect.DeepEqual(acct, c.expMine) {
+			t.Errorf("expected %+v, but got %+v", c.expMine, acct)
 		}
 	}
 }
 
 func Test_GitLab_RepoPerms(t *testing.T) {
-	// NEXT
+	gitlabMock := mockGitLab{
+		acls: map[perm.AuthzID][]string{
+			"101": []string{"bl/repo-1", "bl/repo-2", "bl/repo-3", "org/repo-1", "org/repo-2", "org/repo-3", "bl/a"},
+			"102": []string{"kl/repo-1", "kl/repo-2", "kl/repo-3"},
+		},
+		projs: map[string]*gitlab.Project{
+			"bl/repo-1":  &gitlab.Project{ProjectCommon: gitlab.ProjectCommon{PathWithNamespace: "bl/repo-1"}},
+			"bl/repo-2":  &gitlab.Project{ProjectCommon: gitlab.ProjectCommon{PathWithNamespace: "bl/repo-2"}},
+			"bl/repo-3":  &gitlab.Project{ProjectCommon: gitlab.ProjectCommon{PathWithNamespace: "bl/repo-3"}},
+			"kl/repo-1":  &gitlab.Project{ProjectCommon: gitlab.ProjectCommon{PathWithNamespace: "kl/repo-1"}},
+			"kl/repo-2":  &gitlab.Project{ProjectCommon: gitlab.ProjectCommon{PathWithNamespace: "kl/repo-2"}},
+			"kl/repo-3":  &gitlab.Project{ProjectCommon: gitlab.ProjectCommon{PathWithNamespace: "kl/repo-3"}},
+			"org/repo-1": &gitlab.Project{ProjectCommon: gitlab.ProjectCommon{PathWithNamespace: "org/repo-1"}},
+			"org/repo-2": &gitlab.Project{ProjectCommon: gitlab.ProjectCommon{PathWithNamespace: "org/repo-2"}},
+			"org/repo-3": &gitlab.Project{ProjectCommon: gitlab.ProjectCommon{PathWithNamespace: "org/repo-3"}},
+			"bl/a":       &gitlab.Project{ProjectCommon: gitlab.ProjectCommon{PathWithNamespace: "bl/a"}},
+		},
+		t:          t,
+		maxPerPage: 1,
+	}
+	gitlab.MockListProjects = gitlabMock.ListProjects
+
+	tests := []GitLab_RepoPerms_Test{
+		{
+			description: "matchPattern",
+			op: GitLabAuthzProviderOp{
+				BaseURL:         mustURL(t, "https://gitlab.mine"),
+				AuthnConfigID:   auth.ProviderConfigID{ID: "https://gitlab.mine/", Type: gitlab.GitLabServiceType},
+				SudoToken:       "valid-sudo-token",
+				RepoPathPattern: "{host}/{pathWithNamespace}",
+				MatchPattern:    "gitlab.mine/*",
+			},
+			calls: []GitLab_RepoPerms_call{
+				{
+					description: "bl user has expected perms, short input repos list",
+					account:     acct(1, gitlab.GitLabServiceType, "https://gitlab.mine/", "101"),
+					repos: map[perm.Repo]struct{}{
+						perm.Repo{URI: "gitlab.mine/bl/repo-1"}:  struct{}{},
+						perm.Repo{URI: "gitlab.mine/kl/repo-1"}:  struct{}{},
+						perm.Repo{URI: "gitlab.mine/org/repo-1"}: struct{}{},
+						perm.Repo{URI: "part-of-gitlab.mine-but-doesn't-match-pattern", ExternalRepoSpec: api.ExternalRepoSpec{ServiceType: gitlab.GitLabServiceType, ServiceID: "https://gitlab.mine/"}}: struct{}{},
+					},
+					expPerms: map[api.RepoURI]map[perm.P]bool{
+						"gitlab.mine/bl/repo-1":  map[perm.P]bool{perm.Read: true},
+						"gitlab.mine/kl/repo-1":  map[perm.P]bool{},
+						"gitlab.mine/org/repo-1": map[perm.P]bool{perm.Read: true},
+					},
+				},
+				{
+					description: "bl user has expected perms, long input repos list",
+					account:     acct(1, gitlab.GitLabServiceType, "https://gitlab.mine/", "101"),
+					repos: map[perm.Repo]struct{}{
+						perm.Repo{URI: "gitlab.mine/bl/repo-1"}:  struct{}{},
+						perm.Repo{URI: "gitlab.mine/bl/repo-2"}:  struct{}{},
+						perm.Repo{URI: "gitlab.mine/bl/repo-3"}:  struct{}{},
+						perm.Repo{URI: "gitlab.mine/kl/repo-1"}:  struct{}{},
+						perm.Repo{URI: "gitlab.mine/kl/repo-2"}:  struct{}{},
+						perm.Repo{URI: "gitlab.mine/kl/repo-3"}:  struct{}{},
+						perm.Repo{URI: "gitlab.mine/org/repo-1"}: struct{}{},
+						perm.Repo{URI: "gitlab.mine/org/repo-2"}: struct{}{},
+						perm.Repo{URI: "gitlab.mine/org/repo-3"}: struct{}{},
+						perm.Repo{URI: "gitlab.mine/bl/a"}:       struct{}{},
+						perm.Repo{URI: "a", ExternalRepoSpec: api.ExternalRepoSpec{
+							ServiceType: gitlab.GitLabServiceType,
+							ServiceID:   "https://gitlab.mine/",
+						}}: struct{}{},
+					},
+					expPerms: map[api.RepoURI]map[perm.P]bool{
+						"gitlab.mine/bl/repo-1":  map[perm.P]bool{perm.Read: true},
+						"gitlab.mine/bl/repo-2":  map[perm.P]bool{perm.Read: true},
+						"gitlab.mine/bl/repo-3":  map[perm.P]bool{perm.Read: true},
+						"gitlab.mine/kl/repo-1":  map[perm.P]bool{},
+						"gitlab.mine/kl/repo-2":  map[perm.P]bool{},
+						"gitlab.mine/kl/repo-3":  map[perm.P]bool{},
+						"gitlab.mine/org/repo-1": map[perm.P]bool{perm.Read: true},
+						"gitlab.mine/org/repo-2": map[perm.P]bool{perm.Read: true},
+						"gitlab.mine/org/repo-3": map[perm.P]bool{perm.Read: true},
+						"gitlab.mine/bl/a":       map[perm.P]bool{perm.Read: true},
+					},
+				},
+			},
+		},
+		// TODO
+	}
+	for _, test := range tests {
+		test.run(t)
+	}
+}
+
+type GitLab_RepoPerms_Test struct {
+	description string
+
+	op GitLabAuthzProviderOp
+
+	calls []GitLab_RepoPerms_call
+}
+
+type GitLab_RepoPerms_call struct {
+	description string
+	account     *extsvc.ExternalAccount
+	repos       map[perm.Repo]struct{}
+	expPerms    map[api.RepoURI]map[perm.P]bool
+}
+
+func (g GitLab_RepoPerms_Test) run(t *testing.T) {
+	t.Logf("Test case %q", g.description)
+
+	for _, c := range g.calls {
+		t.Logf("Call %q", c.description)
+
+		// Recreate the authz provider cache every time, before running twice (once uncached, once cached)
+		ctx := context.Background()
+		op := g.op
+		op.MockCache = make(mockCache)
+		authzProvider := NewGitLabAuthzProvider(op)
+
+		for i := 0; i < 2; i++ {
+			t.Logf("iter %d", i)
+			perms, err := authzProvider.RepoPerms(ctx, c.account, c.repos)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				continue
+			}
+			if !reflect.DeepEqual(perms, c.expPerms) {
+				t.Errorf("expected %+v, but got %+v", c.expPerms, perms)
+			}
+		}
+	}
 }
 
 /*
@@ -612,9 +740,6 @@ type mockGitLab struct {
 }
 
 func (m *mockGitLab) ListUsers(ctx context.Context, urlStr string) (users []*gitlab.User, nextPageURL *string, err error) {
-
-	log.Printf("# ListUsers %s", urlStr)
-
 	if m.madeUserReqs == nil {
 		m.madeUserReqs = make(map[string]int)
 	}
@@ -741,9 +866,16 @@ func (m *mockGitLab) ListProjects(ctx context.Context, urlStr string) (proj []*g
 
 type mockCache map[string]string
 
-func (m mockCache) Get(key string) ([]byte, bool) { v, ok := m[key]; return []byte(v), ok }
-func (m mockCache) Set(key string, b []byte)      { m[key] = string(b) }
-func (m mockCache) Delete(key string)             { delete(m, key) }
+func (m mockCache) Get(key string) ([]byte, bool) {
+	v, ok := m[key]
+	return []byte(v), ok
+}
+func (m mockCache) Set(key string, b []byte) {
+	m[key] = string(b)
+}
+func (m mockCache) Delete(key string) {
+	delete(m, key)
+}
 
 func getIntOrDefault(str string, def int) (int, error) {
 	if str == "" {

@@ -60,8 +60,8 @@ type GitLabAuthzProvider struct {
 var _ perm.AuthzProvider = ((*GitLabAuthzProvider)(nil))
 
 type cacheVal struct {
-	// repos is the list of repositories to which the user has access.
-	repos map[api.RepoURI]struct{}
+	// Repos is the list of repositories to which the user has access.
+	Repos map[api.RepoURI]struct{} `json:"repos"`
 }
 
 type GitLabAuthzProviderOp struct {
@@ -124,7 +124,7 @@ func (p *GitLabAuthzProvider) RepoPerms(ctx context.Context, account *extsvc.Ext
 			return nil, err
 		}
 
-		accessibleReposB, err := json.Marshal(cacheVal{repos: accessibleRepos})
+		accessibleReposB, err := json.Marshal(cacheVal{Repos: accessibleRepos})
 		if err != nil {
 			return nil, err
 		}
@@ -139,6 +139,7 @@ func (p *GitLabAuthzProvider) RepoPerms(ctx context.Context, account *extsvc.Ext
 			perms[repo.URI] = map[perm.P]bool{}
 		}
 	}
+
 	return perms, nil
 }
 
@@ -285,7 +286,6 @@ func reposByMatchPattern(mt matchType, matchString string, repos map[perm.Repo]s
 // getCachedAccessList returns the list of repositories accessible to a user from the cache and
 // whether the cache entry exists.
 func (p *GitLabAuthzProvider) getCachedAccessList(accountID string) (map[api.RepoURI]struct{}, bool) {
-
 	// TODO(beyang): trigger best-effort fetch in background if ttl is getting close (but avoid dup refetches)
 
 	cachedReposB, exists := p.cache.Get(accountID)
@@ -298,7 +298,7 @@ func (p *GitLabAuthzProvider) getCachedAccessList(accountID string) (map[api.Rep
 		p.cache.Delete(accountID)
 		return nil, false
 	}
-	return r.repos, true
+	return r.Repos, true
 }
 
 // fetchUserAccessList fetches the list of repositories that are readable to a user from the GitLab API.
