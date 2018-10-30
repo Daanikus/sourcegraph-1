@@ -8,14 +8,195 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/auth"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/perm"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/types"
 	"github.com/sourcegraph/sourcegraph/pkg/api"
 	"github.com/sourcegraph/sourcegraph/pkg/extsvc"
 	"github.com/sourcegraph/sourcegraph/pkg/extsvc/gitlab"
+	"github.com/sourcegraph/sourcegraph/schema"
 )
 
 func Test_GitLab_RepoPerms(t *testing.T) {
+	// TODO
+}
+
+func Test_GitLab_FetchAccount(t *testing.T) {
+	// TODO
+}
+
+// TODO: discard this in favor of the more componentized tests above
+func Test_GitLab_RepoPerms(t *testing.T) {
+	tests := []struct {
+		description    string
+		authnProviders []Provider
+		gitlabURL      string
+		configID       auth.ProviderConfigID
+		gitlabProvider string
+		matchPattern   string
+		user           *types.User
+		accounts       []*extsvc.ExternalAccount
+		repos          map[perm.Repo]struct{}
+		expPerms       map[api.RepoURI]map[perm.P]bool
+	}{{
+		description:    "matchPattern enforces bl's perms (short input list)",
+		authnProviders: nil,
+		gitlabURL:      "https://gitlab.mine/",
+		configID:       auth.ProviderConfigID{ID: "https://gitlab.mine/", Type: "gitlab"},
+		gitlabProvider: "gitlab",
+		matchPattern:   "gitlab.mine/*",
+		accounts:       []*extsvc.ExternalAccount{acct(1, "gitlab", "https://gitlab.mine/", "bl")},
+		repos: map[perm.Repo]struct{}{
+			perm.Repo{URI: "gitlab.mine/bl/repo-1"}:  struct{}{},
+			perm.Repo{URI: "gitlab.mine/kl/repo-1"}:  struct{}{},
+			perm.Repo{URI: "gitlab.mine/org/repo-1"}: struct{}{},
+			perm.Repo{URI: "a", ExternalRepoSpec: api.ExternalRepoSpec{
+				ServiceType: "gitlab",
+				ServiceID:   "https://gitlab.mine/",
+			}}: struct{}{},
+		},
+		expPerms: map[api.RepoURI]map[perm.P]bool{
+			"gitlab.mine/bl/repo-1":  map[perm.P]bool{perm.Read: true},
+			"gitlab.mine/kl/repo-1":  map[perm.P]bool{},
+			"gitlab.mine/org/repo-1": map[perm.P]bool{perm.Read: true},
+		},
+		// }, {
+		// 	description:  "matchPattern enforces kl's perms (short input list)",
+		// 	gitlabURL:    "https://gitlab.mine",
+		// 	serviceType:  "gitlab",
+		// 	serviceID:    "https://gitlab.mine",
+		// 	matchPattern: "gitlab.mine/*",
+		// 	accounts:     []*extsvc.ExternalAccount{acct(2, "gitlab", "https://gitlab.mine/", "kl")},
+		// 	repos: map[perm.Repo]struct{}{
+		// 		perm.Repo{URI: "gitlab.mine/bl/repo-1"}:  struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/kl/repo-1"}:  struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/org/repo-1"}: struct{}{},
+		// 		perm.Repo{URI: "a", ExternalRepoSpec: api.ExternalRepoSpec{
+		// 			ServiceType: "gitlab",
+		// 			ServiceID:   "https://gitlab.mine/",
+		// 		}}: struct{}{},
+		// 	},
+		// 	expPerms: map[api.RepoURI]map[perm.P]bool{
+		// 		"gitlab.mine/bl/repo-1":  map[perm.P]bool{},
+		// 		"gitlab.mine/kl/repo-1":  map[perm.P]bool{perm.Read: true},
+		// 		"gitlab.mine/org/repo-1": map[perm.P]bool{},
+		// 	},
+		// }, {
+		// 	description:  "matchPattern enforces bl's perms (long input list)",
+		// 	gitlabURL:    "https://gitlab.mine",
+		// 	serviceType:  "gitlab",
+		// 	serviceID:    "https://gitlab.mine",
+		// 	matchPattern: "gitlab.mine/*",
+		// 	accounts:     []*extsvc.ExternalAccount{acct(1, "gitlab", "https://gitlab.mine/", "bl")},
+		// 	repos: map[perm.Repo]struct{}{
+		// 		perm.Repo{URI: "gitlab.mine/bl/repo-1"}: struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/bl/repo-2"}: struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/bl/repo-3"}: struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/kl/repo-1"}: struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/kl/repo-2"}: struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/kl/repo-3"}: struct{}{},
+		// 		perm.Repo{URI: "a", ExternalRepoSpec: api.ExternalRepoSpec{
+		// 			ServiceType: "gitlab",
+		// 			ServiceID:   "https://gitlab.mine/",
+		// 		}}: struct{}{},
+		// 	},
+		// 	expPerms: map[api.RepoURI]map[perm.P]bool{
+		// 		"gitlab.mine/bl/repo-1": map[perm.P]bool{perm.Read: true},
+		// 		"gitlab.mine/bl/repo-2": map[perm.P]bool{perm.Read: true},
+		// 		"gitlab.mine/bl/repo-3": map[perm.P]bool{perm.Read: true},
+		// 		"gitlab.mine/kl/repo-1": map[perm.P]bool{},
+		// 		"gitlab.mine/kl/repo-2": map[perm.P]bool{},
+		// 		"gitlab.mine/kl/repo-3": map[perm.P]bool{},
+		// 	},
+		// }, {
+		// 	description:  "no matchPattern, use external repo spec",
+		// 	gitlabURL:    "https://gitlab.mine",
+		// 	serviceType:  "gitlab",
+		// 	serviceID:    "https://gitlab.mine",
+		// 	matchPattern: "",
+		// 	accounts:     []*extsvc.ExternalAccount{acct(1, "gitlab", "https://gitlab.mine/", "bl")},
+		// 	repos: map[perm.Repo]struct{}{
+		// 		perm.Repo{URI: "gitlab.mine/bl/repo-1"}: struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/bl/repo-2"}: struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/bl/repo-3"}: struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/kl/repo-1"}: struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/kl/repo-2"}: struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/kl/repo-3"}: struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/bl/a", ExternalRepoSpec: api.ExternalRepoSpec{
+		// 			ServiceType: "gitlab",
+		// 			ServiceID:   "https://gitlab.mine/",
+		// 		}}: struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/a", ExternalRepoSpec: api.ExternalRepoSpec{
+		// 			ServiceType: "gitlab",
+		// 			ServiceID:   "https://gitlab.mine/",
+		// 		}}: struct{}{},
+		// 		perm.Repo{URI: "a", ExternalRepoSpec: api.ExternalRepoSpec{
+		// 			ServiceType: "gitlab",
+		// 			ServiceID:   "https://gitlab.mine/",
+		// 		}}: struct{}{},
+		// 		perm.Repo{URI: "b", ExternalRepoSpec: api.ExternalRepoSpec{
+		// 			ServiceType: "gitlab",
+		// 			ServiceID:   "https://not-mine/",
+		// 		}}: struct{}{},
+		// 		perm.Repo{URI: "c", ExternalRepoSpec: api.ExternalRepoSpec{
+		// 			ServiceType: "not-gitlab",
+		// 			ServiceID:   "https://gitlab.mine/",
+		// 		}}: struct{}{},
+		// 	},
+		// 	expPerms: map[api.RepoURI]map[perm.P]bool{
+		// 		"gitlab.mine/bl/a": map[perm.P]bool{perm.Read: true},
+		// 		"gitlab.mine/a":    map[perm.P]bool{},
+		// 		"a":                map[perm.P]bool{},
+		// 	},
+		// }, {
+		// 	description:  "matchPattern should take precendence over external repo spec",
+		// 	gitlabURL:    "https://gitlab.mine",
+		// 	serviceType:  "gitlab",
+		// 	serviceID:    "https://gitlab.mine",
+		// 	matchPattern: "gitlab.mine/*",
+		// 	accounts:     []*extsvc.ExternalAccount{acct(1, "gitlab", "https://gitlab.mine/", "bl")},
+		// 	repos: map[perm.Repo]struct{}{
+		// 		perm.Repo{URI: "gitlab.mine/bl/repo-1"}: struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/bl/repo-2"}: struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/bl/repo-3"}: struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/kl/repo-1"}: struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/kl/repo-2"}: struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/kl/repo-3"}: struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/bl/a", ExternalRepoSpec: api.ExternalRepoSpec{
+		// 			ServiceType: "gitlab",
+		// 			ServiceID:   "https://gitlab.mine/",
+		// 		}}: struct{}{},
+		// 		perm.Repo{URI: "gitlab.mine/a", ExternalRepoSpec: api.ExternalRepoSpec{
+		// 			ServiceType: "gitlab",
+		// 			ServiceID:   "https://gitlab.mine/",
+		// 		}}: struct{}{},
+		// 		perm.Repo{URI: "a", ExternalRepoSpec: api.ExternalRepoSpec{
+		// 			ServiceType: "gitlab",
+		// 			ServiceID:   "https://gitlab.mine/",
+		// 		}}: struct{}{},
+		// 		perm.Repo{URI: "b", ExternalRepoSpec: api.ExternalRepoSpec{
+		// 			ServiceType: "gitlab",
+		// 			ServiceID:   "https://not-mine/",
+		// 		}}: struct{}{},
+		// 		perm.Repo{URI: "c", ExternalRepoSpec: api.ExternalRepoSpec{
+		// 			ServiceType: "not-gitlab",
+		// 			ServiceID:   "https://gitlab.mine/",
+		// 		}}: struct{}{},
+		// 	},
+		// 	expPerms: map[api.RepoURI]map[perm.P]bool{
+		// 		"gitlab.mine/bl/repo-1": map[perm.P]bool{perm.Read: true},
+		// 		"gitlab.mine/bl/repo-2": map[perm.P]bool{perm.Read: true},
+		// 		"gitlab.mine/bl/repo-3": map[perm.P]bool{perm.Read: true},
+		// 		"gitlab.mine/bl/a":      map[perm.P]bool{perm.Read: true},
+		// 		"gitlab.mine/kl/repo-1": map[perm.P]bool{},
+		// 		"gitlab.mine/kl/repo-2": map[perm.P]bool{},
+		// 		"gitlab.mine/kl/repo-3": map[perm.P]bool{},
+		// 		"gitlab.mine/a":         map[perm.P]bool{},
+		// 	},
+	}}
+
+	// TODO: test case that exercises FetchAccount path
+
 	gitlabMock := mockGitLab{
 		acls: map[perm.AuthzID][]string{
 			"bl": []string{"bl/repo-1", "bl/repo-2", "bl/repo-3", "org/repo-1", "org/repo-2", "org/repo-3", "bl/a"},
@@ -38,172 +219,6 @@ func Test_GitLab_RepoPerms(t *testing.T) {
 	}
 	gitlab.MockListProjects = gitlabMock.ListProjects
 
-	tests := []struct {
-		description  string
-		gitlabURL    string
-		serviceID    string
-		serviceType  string
-		matchPattern string
-		user         *types.User
-		accounts     []*extsvc.ExternalAccount
-		repos        map[perm.Repo]struct{}
-		expPerms     map[api.RepoURI]map[perm.P]bool
-	}{{
-		description:  "matchPattern enforces bl's perms (short input list)",
-		gitlabURL:    "https://gitlab.mine/",
-		serviceType:  "gitlab",
-		serviceID:    "https://gitlab.mine/",
-		matchPattern: "gitlab.mine/*",
-		accounts:     []*extsvc.ExternalAccount{acct(1, "gitlab", "https://gitlab.mine/", "bl")},
-		repos: map[perm.Repo]struct{}{
-			perm.Repo{URI: "gitlab.mine/bl/repo-1"}:  struct{}{},
-			perm.Repo{URI: "gitlab.mine/kl/repo-1"}:  struct{}{},
-			perm.Repo{URI: "gitlab.mine/org/repo-1"}: struct{}{},
-			perm.Repo{URI: "a", ExternalRepoSpec: api.ExternalRepoSpec{
-				ServiceType: "gitlab",
-				ServiceID:   "https://gitlab.mine/",
-			}}: struct{}{},
-		},
-		expPerms: map[api.RepoURI]map[perm.P]bool{
-			"gitlab.mine/bl/repo-1":  map[perm.P]bool{perm.Read: true},
-			"gitlab.mine/kl/repo-1":  map[perm.P]bool{},
-			"gitlab.mine/org/repo-1": map[perm.P]bool{perm.Read: true},
-		},
-	}, {
-		description:  "matchPattern enforces kl's perms (short input list)",
-		gitlabURL:    "https://gitlab.mine",
-		serviceType:  "gitlab",
-		serviceID:    "https://gitlab.mine",
-		matchPattern: "gitlab.mine/*",
-		accounts:     []*extsvc.ExternalAccount{acct(2, "gitlab", "https://gitlab.mine/", "kl")},
-		repos: map[perm.Repo]struct{}{
-			perm.Repo{URI: "gitlab.mine/bl/repo-1"}:  struct{}{},
-			perm.Repo{URI: "gitlab.mine/kl/repo-1"}:  struct{}{},
-			perm.Repo{URI: "gitlab.mine/org/repo-1"}: struct{}{},
-			perm.Repo{URI: "a", ExternalRepoSpec: api.ExternalRepoSpec{
-				ServiceType: "gitlab",
-				ServiceID:   "https://gitlab.mine/",
-			}}: struct{}{},
-		},
-		expPerms: map[api.RepoURI]map[perm.P]bool{
-			"gitlab.mine/bl/repo-1":  map[perm.P]bool{},
-			"gitlab.mine/kl/repo-1":  map[perm.P]bool{perm.Read: true},
-			"gitlab.mine/org/repo-1": map[perm.P]bool{},
-		},
-	}, {
-		description:  "matchPattern enforces bl's perms (long input list)",
-		gitlabURL:    "https://gitlab.mine",
-		serviceType:  "gitlab",
-		serviceID:    "https://gitlab.mine",
-		matchPattern: "gitlab.mine/*",
-		accounts:     []*extsvc.ExternalAccount{acct(1, "gitlab", "https://gitlab.mine/", "bl")},
-		repos: map[perm.Repo]struct{}{
-			perm.Repo{URI: "gitlab.mine/bl/repo-1"}: struct{}{},
-			perm.Repo{URI: "gitlab.mine/bl/repo-2"}: struct{}{},
-			perm.Repo{URI: "gitlab.mine/bl/repo-3"}: struct{}{},
-			perm.Repo{URI: "gitlab.mine/kl/repo-1"}: struct{}{},
-			perm.Repo{URI: "gitlab.mine/kl/repo-2"}: struct{}{},
-			perm.Repo{URI: "gitlab.mine/kl/repo-3"}: struct{}{},
-			perm.Repo{URI: "a", ExternalRepoSpec: api.ExternalRepoSpec{
-				ServiceType: "gitlab",
-				ServiceID:   "https://gitlab.mine/",
-			}}: struct{}{},
-		},
-		expPerms: map[api.RepoURI]map[perm.P]bool{
-			"gitlab.mine/bl/repo-1": map[perm.P]bool{perm.Read: true},
-			"gitlab.mine/bl/repo-2": map[perm.P]bool{perm.Read: true},
-			"gitlab.mine/bl/repo-3": map[perm.P]bool{perm.Read: true},
-			"gitlab.mine/kl/repo-1": map[perm.P]bool{},
-			"gitlab.mine/kl/repo-2": map[perm.P]bool{},
-			"gitlab.mine/kl/repo-3": map[perm.P]bool{},
-		},
-	}, {
-		description:  "no matchPattern, use external repo spec",
-		gitlabURL:    "https://gitlab.mine",
-		serviceType:  "gitlab",
-		serviceID:    "https://gitlab.mine",
-		matchPattern: "",
-		accounts:     []*extsvc.ExternalAccount{acct(1, "gitlab", "https://gitlab.mine/", "bl")},
-		repos: map[perm.Repo]struct{}{
-			perm.Repo{URI: "gitlab.mine/bl/repo-1"}: struct{}{},
-			perm.Repo{URI: "gitlab.mine/bl/repo-2"}: struct{}{},
-			perm.Repo{URI: "gitlab.mine/bl/repo-3"}: struct{}{},
-			perm.Repo{URI: "gitlab.mine/kl/repo-1"}: struct{}{},
-			perm.Repo{URI: "gitlab.mine/kl/repo-2"}: struct{}{},
-			perm.Repo{URI: "gitlab.mine/kl/repo-3"}: struct{}{},
-			perm.Repo{URI: "gitlab.mine/bl/a", ExternalRepoSpec: api.ExternalRepoSpec{
-				ServiceType: "gitlab",
-				ServiceID:   "https://gitlab.mine/",
-			}}: struct{}{},
-			perm.Repo{URI: "gitlab.mine/a", ExternalRepoSpec: api.ExternalRepoSpec{
-				ServiceType: "gitlab",
-				ServiceID:   "https://gitlab.mine/",
-			}}: struct{}{},
-			perm.Repo{URI: "a", ExternalRepoSpec: api.ExternalRepoSpec{
-				ServiceType: "gitlab",
-				ServiceID:   "https://gitlab.mine/",
-			}}: struct{}{},
-			perm.Repo{URI: "b", ExternalRepoSpec: api.ExternalRepoSpec{
-				ServiceType: "gitlab",
-				ServiceID:   "https://not-mine/",
-			}}: struct{}{},
-			perm.Repo{URI: "c", ExternalRepoSpec: api.ExternalRepoSpec{
-				ServiceType: "not-gitlab",
-				ServiceID:   "https://gitlab.mine/",
-			}}: struct{}{},
-		},
-		expPerms: map[api.RepoURI]map[perm.P]bool{
-			"gitlab.mine/bl/a": map[perm.P]bool{perm.Read: true},
-			"gitlab.mine/a":    map[perm.P]bool{},
-			"a":                map[perm.P]bool{},
-		},
-	}, {
-		description:  "matchPattern should take precendence over external repo spec",
-		gitlabURL:    "https://gitlab.mine",
-		serviceType:  "gitlab",
-		serviceID:    "https://gitlab.mine",
-		matchPattern: "gitlab.mine/*",
-		accounts:     []*extsvc.ExternalAccount{acct(1, "gitlab", "https://gitlab.mine/", "bl")},
-		repos: map[perm.Repo]struct{}{
-			perm.Repo{URI: "gitlab.mine/bl/repo-1"}: struct{}{},
-			perm.Repo{URI: "gitlab.mine/bl/repo-2"}: struct{}{},
-			perm.Repo{URI: "gitlab.mine/bl/repo-3"}: struct{}{},
-			perm.Repo{URI: "gitlab.mine/kl/repo-1"}: struct{}{},
-			perm.Repo{URI: "gitlab.mine/kl/repo-2"}: struct{}{},
-			perm.Repo{URI: "gitlab.mine/kl/repo-3"}: struct{}{},
-			perm.Repo{URI: "gitlab.mine/bl/a", ExternalRepoSpec: api.ExternalRepoSpec{
-				ServiceType: "gitlab",
-				ServiceID:   "https://gitlab.mine/",
-			}}: struct{}{},
-			perm.Repo{URI: "gitlab.mine/a", ExternalRepoSpec: api.ExternalRepoSpec{
-				ServiceType: "gitlab",
-				ServiceID:   "https://gitlab.mine/",
-			}}: struct{}{},
-			perm.Repo{URI: "a", ExternalRepoSpec: api.ExternalRepoSpec{
-				ServiceType: "gitlab",
-				ServiceID:   "https://gitlab.mine/",
-			}}: struct{}{},
-			perm.Repo{URI: "b", ExternalRepoSpec: api.ExternalRepoSpec{
-				ServiceType: "gitlab",
-				ServiceID:   "https://not-mine/",
-			}}: struct{}{},
-			perm.Repo{URI: "c", ExternalRepoSpec: api.ExternalRepoSpec{
-				ServiceType: "not-gitlab",
-				ServiceID:   "https://gitlab.mine/",
-			}}: struct{}{},
-		},
-		expPerms: map[api.RepoURI]map[perm.P]bool{
-			"gitlab.mine/bl/repo-1": map[perm.P]bool{perm.Read: true},
-			"gitlab.mine/bl/repo-2": map[perm.P]bool{perm.Read: true},
-			"gitlab.mine/bl/repo-3": map[perm.P]bool{perm.Read: true},
-			"gitlab.mine/bl/a":      map[perm.P]bool{perm.Read: true},
-			"gitlab.mine/kl/repo-1": map[perm.P]bool{},
-			"gitlab.mine/kl/repo-2": map[perm.P]bool{},
-			"gitlab.mine/kl/repo-3": map[perm.P]bool{},
-			"gitlab.mine/a":         map[perm.P]bool{},
-		},
-	}}
-
 	for _, test := range tests {
 		t.Logf("Test case %q", test.description)
 		glURL, err := url.Parse(test.gitlabURL)
@@ -211,22 +226,25 @@ func Test_GitLab_RepoPerms(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		auth.UpdateProviders(test.authnProviders)
+
 		// Create a new authz provider every time, so the cache is clear
 		ctx := context.Background()
 		authzProvider := NewGitLabAuthzProvider(GitLabAuthzProviderOp{
-			BaseURL:                  glURL,
-			IdentityServiceID:        test.serviceID,
-			IdentityServiceType:      test.serviceType,
-			GitLabIdentityProviderID: test.serviceID,
-			SudoToken:                "",
-			RepoPathPattern:          "",
-			MatchPattern:             test.matchPattern,
-			CacheTTL:                 24 * time.Hour,
-			MockCache:                make(mockCache),
-			UseNativeUsername:        false,
+			BaseURL: glURL,
+			// IdentityServiceID:        test.serviceID,
+			// IdentityServiceType:      test.serviceType,
+			AuthnConfigID:     test.configID,
+			GitLabProvider:    test.gitlabProvider,
+			SudoToken:         "",
+			RepoPathPattern:   "",
+			MatchPattern:      test.matchPattern,
+			CacheTTL:          24 * time.Hour,
+			MockCache:         make(mockCache),
+			UseNativeUsername: false,
 		})
 
-		acct, _, err := authzProvider.GetAccount(ctx, test.user, test.accounts)
+		acct, _, err := authzProvider.FetchAccount(ctx, test.user, test.accounts)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -467,4 +485,25 @@ func acct(userID int32, serviceType, serviceID, accountID string) *extsvc.Extern
 			AccountID:   accountID,
 		},
 	}
+}
+
+type mockAuthnProvider struct {
+	configID  ProviderConfigID
+	serviceID string
+}
+
+func (m mockAuthnProvider) ConfigID() ProviderConfigID {
+	return m.configID
+}
+
+func (m mockAuthnProvider) Config() schema.AuthProviders {
+	panic("should not be called")
+}
+
+func (m mockAuthnProvider) CachedInfo() *auth.ProviderInfo {
+	return &auth.ProviderInfo{ServiceID: m.serviceID}
+}
+
+func (m mockAuthnProvider) Refresh(ctx context.Context) error {
+	panic("should not be called")
 }

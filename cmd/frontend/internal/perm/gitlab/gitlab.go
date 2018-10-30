@@ -174,7 +174,7 @@ func (p *GitLabAuthzProvider) FetchAccount(ctx context.Context, user *types.User
 		glUser, err = p.fetchAccountByUsername(ctx, user.Username)
 	} else {
 		// resolve the GitLab account using the authn provider (specified by p.AuthnConfigID)
-		authnProvider := auth.GetProviderByConfigID(p.authnConfigID)
+		authnProvider := getProviderByConfigID(p.authnConfigID)
 		if authnProvider == nil {
 			return nil, nil
 		}
@@ -360,3 +360,5 @@ func ParseMatchPattern(matchPattern string) (mt matchType, matchString string, e
 		return "", "", errors.New("matchPattern should start with \"*/\" or end with \"/*\"")
 	}
 }
+
+var getProviderByConfigID = auth.GetProviderByConfigID
