@@ -31,10 +31,22 @@ func DoWithAuthzProviders(f func(p []AuthzProvider) error) error {
 	defer providersMu.RUnlock()
 	return f(authzProviders)
 }
+
 func NumAuthzProviders() int {
 	providersMu.RLock()
 	defer providersMu.RUnlock()
 	return len(authzProviders)
+}
+
+func GetAuthzProvider(id string, type_ string) AuthzProvider {
+	providersMu.RLock()
+	defer providersMu.RUnlock()
+	for _, p := range authzProviders {
+		if p.ServiceID() == id && p.ServiceType() == type_ {
+			return p
+		}
+	}
+	return nil
 }
 
 func AllowByDefault() bool {

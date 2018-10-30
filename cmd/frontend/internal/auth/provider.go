@@ -59,14 +59,6 @@ type ProviderConfigID struct {
 
 // ProviderInfo contains information about an authentication provider.
 type ProviderInfo struct {
-	// ConfigID is the identifier specified in the authn provider config's configID field. It is
-	// used to match this provider with other things derived from configuration. For example, code
-	// host configuration may need to reference a particular authn provider and does so by including
-	// the config ID as specified in the authn provider config. It is not a stable identifier (as
-	// the admin can change it at will). It may be empty in some providers (in which case those
-	// providers are not referencible from other parts of the config).
-	ConfigID string
-
 	// ServiceID identifies the external service that this authentication provider represents. It is
 	// a stable identifier.
 	ServiceID string

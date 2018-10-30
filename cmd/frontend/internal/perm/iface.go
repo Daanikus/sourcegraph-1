@@ -61,6 +61,9 @@ type AuthzProvider interface {
 	// Repos partitions the set of repositories into two sets: the set of repositories for which
 	// this AuthzProvider is the source of permissions and the set of repositories for which it is
 	// not. Each repository in the input set must be represented in exactly one of the output sets.
+	//
+	// TODO(beyang): mention that implementations should expect the context doesn't contain the
+	// currently authenticated Sourcegraph user.
 	Repos(ctx context.Context, repos map[Repo]struct{}) (mine map[Repo]struct{}, others map[Repo]struct{})
 
 	// RepoPerms returns a map where the keys comprise a subset of the input repos to which the user
@@ -70,7 +73,13 @@ type AuthzProvider interface {
 	// permissions map, that means the repo's permissions are not handled by this AuthzProvider.
 	//
 	// RepoPerms should accept a nil value for userAccount, in which case it should return the set
-	// of permissions for an unauthenticated user.
+	// of permissions for an code-host-unauthenticated user.
+	//
+	// TODO(beyang): mention should return an error if userAccount's ServiceID/ServiceType do not
+	// match.
+	//
+	// TODO(beyang): mention that implementations should expect the context doesn't contain the
+	// currently authenticated Sourcegraph user.
 	//
 	// Design note: this is a better interface than ListAllRepos, because in some cases, the list of
 	// all repos may be very long (especially if the returned list includes public repos). RepoPerms
@@ -80,13 +89,23 @@ type AuthzProvider interface {
 	// are public/private, and (3) a cache of some sort.
 	RepoPerms(ctx context.Context, userAccount *extsvc.ExternalAccount, repos map[Repo]struct{}) (map[api.RepoURI]map[P]bool, error)
 
-	// GetAccount returns the external account to use to identify the user to this authz provider,
-	// taking as input the current list of external accounts associated with the user (which may
-	// contain the external account to use or which may be necessary to compute one if it doesn't
-	// exist). If no such account exists, an implementation can return (nil, false, nil) or (nil,
-	// false, err) where the error is the error returned by some external API in trying to determine
-	// the external account.
-	GetAccount(ctx context.Context, user *types.User, current []*extsvc.ExternalAccount) (mine *extsvc.ExternalAccount, isNew bool, err error)
+	// FetchAccount returns the external account to use to identify the user to this authz provider,
+	// taking as input the current list of external accounts associated with the user. The current
+	// list of accounts may contain an account that belongs to this AuthzProvider, but
+	// implementations should always recompute the account.
+	//
+	// TODO(beyang): mention that implementations should expect the context doesn't contain the
+	// currently authenticated Sourcegraph user.
+	//
+	// TODO(beyang): mention user should be non-nil -- it is the caller's responsibility to
+	// determine if there's a currently authenticated user and behave accordingly
+	//
+	// TODO(beyang): may return (nil, nil) if no account could be found and there was no other
+	// error.
+	FetchAccount(ctx context.Context, user *types.User, current []*extsvc.ExternalAccount) (mine *extsvc.ExternalAccount, err error)
+
+	ServiceType() string
+	ServiceID() string
 }
 
 // IdentityToAuthzIDMapper maps UserIDs (from a AuthnProvider) to AuthzIDs (to a AuthzProvider).

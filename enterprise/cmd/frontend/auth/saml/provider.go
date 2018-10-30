@@ -38,10 +38,13 @@ type provider struct {
 
 // ConfigID implements auth.Provider.
 func (p *provider) ConfigID() auth.ProviderConfigID {
-	return auth.ProviderConfigID{
-		Type: providerType,
-		ID:   providerConfigID(&p.config, p.multiple),
+	id := auth.ProviderConfigID{Type: providerType}
+	if p.config.ConfigID == "" {
+		id.ID = providerConfigID(&p.config, p.multiple)
+	} else {
+		id.ID = p.config.ConfigID
 	}
+	return id
 }
 
 // Config implements auth.Provider.

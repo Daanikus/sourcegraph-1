@@ -30,10 +30,13 @@ type provider struct {
 
 // ConfigID implements auth.Provider.
 func (p *provider) ConfigID() auth.ProviderConfigID {
-	return auth.ProviderConfigID{
-		Type: providerType,
-		ID:   providerConfigID(&p.config),
+	id := auth.ProviderConfigID{Type: providerType}
+	if p.config == "" {
+		id.ID = providerConfigID(&p.config)
+	} else {
+		id.ID = p.config.ConfigID
 	}
+	return id
 }
 
 // Config implements auth.Provider.

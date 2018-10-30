@@ -8,6 +8,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/pkg/actor"
 	"github.com/sourcegraph/sourcegraph/pkg/api"
 	"github.com/sourcegraph/sourcegraph/pkg/extsvc"
+	log15 "gopkg.in/inconshreveable/log15.v2"
 )
 
 var mockAuthzFilter func(ctx context.Context, repos []*types.Repo, p perm.P) ([]*types.Repo, error)
@@ -74,8 +75,8 @@ func getFilteredRepoURIs(ctx context.Context, repos map[perm.Repo]struct{}, p pe
 		}
 	}
 
-	accepted = make(map[api.RepoURI]struct{})
-	unverified := make(map[perm.Repo]struct{})
+	accepted = make(map[api.RepoURI]struct{})  // repositories tha thave been claimed and have read permissions
+	unverified := make(map[perm.Repo]struct{}) // repositories that have not been claimed by any authz provider
 	for repo := range repos {
 		unverified[repo] = struct{}{}
 	}
@@ -87,17 +88,26 @@ func getFilteredRepoURIs(ctx context.Context, repos map[perm.Repo]struct{}, p pe
 			if len(unverified) == 0 {
 				break
 			}
-			acct, isNew, err := authzProvider.GetAccount(ctx, currentUser, accts)
-			if err != nil {
-				return err
-			}
-			if currentUser != nil && isNew { // If new account, save it so we remember it later.
-				err := ExternalAccounts.AssociateUserAndSave(ctx, currentUser.ID, acct.ExternalAccountSpec, acct.ExternalAccountData)
-				if err != nil {
-					return err
+
+			var providerAcct *extsvc.ExternalAccount
+			for _, acct := range accts {
+				if acct.ServiceID == authzProvider.ServiceID() && acct.ServiceType == authzProvider.ServiceType() {
+					providerAcct = acct
+					break
 				}
 			}
-			perms, err := authzProvider.RepoPerms(ctx, acct, unverified)
+			if providerAcct == nil && currentUser != nil { // no existing external account for authz provider
+				if p, err = authzProvider.FetchAccount(ctx, currentUser, accts); err == nil {
+					providerAcct = p
+					if err := ExternalAccounts.AssociateUserAndSave(ctx, currentUser.ID, acct.ExternalAccountSpec, acct.ExternalAccountData); err != nil {
+						return err
+					}
+				} else {
+					log15.Warn("Could not fetch authz provider account for user", "username", currentUser.Username, "authzProvider", authzProvider.ServiceID(), "error", err)
+				}
+			}
+
+			perms, err := authzProvider.RepoPerms(ctx, providerAcct, unverified)
 			if err != nil {
 				return err
 			}

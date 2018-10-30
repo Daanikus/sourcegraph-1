@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/auth"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/perm"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/types"
 	"github.com/sourcegraph/sourcegraph/pkg/api"
@@ -39,20 +40,15 @@ type GitLabAuthzProvider struct {
 	// of ExternalRepoSpec (fetched from the DB).
 	matchPattern string
 
-	// identityServiceID is the ID of the external service whose account ID should be used to
-	// identify the user to GitLab to compute permissions. It should match the service ID of one of
-	// the authn providers.
-	identityServiceID string
+	// gitlabProvider is the string that should be passed to the `provider` URL query parameter when
+	// looking up the user via the GitLab API. It is the identifier to GitLab of the same
+	// authenetication provider as is identified by authnConfigID
+	gitlabProvider string
 
-	// identityServiceType is the type of the external service whose account ID should be used to
-	// identify the user to GitLab to compute permissions. It should match the service type of one
-	// of the authn providers.
-	identityServiceType string
-
-	// gitlabIdentityProviderID is the string that should be passed to the `provider` URL query
-	// parameter when looking up the user via the GitLab API. It is analogous to
-	// identityServiceType, but for GitLab.
-	gitlabIdentityProviderID string
+	// authnConfigID is the config identifier that identifies the authentication provider to use
+	// when no GitLab external account exists. It corresponds to the auth.ProviderInfo.ConfigID
+	// field.
+	authnConfigID auth.ProviderConfigID
 
 	// userNativeUsername, if true, makes this provider compute the correspondence to GitLab user
 	// using the Sourcegraph username. This is highly unsafe (as the username is mutable and not
@@ -68,8 +64,7 @@ type cacheVal struct {
 
 type GitLabAuthzProviderOp struct {
 	BaseURL                  *url.URL
-	IdentityServiceID        string
-	IdentityServiceType      string
+	ConfigID                 string
 	GitLabIdentityProviderID string
 
 	// SudoToken is an access tokens with sudo *and* api scope.
@@ -85,16 +80,15 @@ type GitLabAuthzProviderOp struct {
 
 func NewGitLabAuthzProvider(op GitLabAuthzProviderOp) *GitLabAuthzProvider {
 	p := &GitLabAuthzProvider{
-		client:                   gitlab.NewClient(op.BaseURL, op.SudoToken, nil),
-		clientURL:                op.BaseURL,
-		codeHost:                 gitlab.NewCodeHost(op.BaseURL),
-		repoPathPattern:          op.RepoPathPattern,
-		matchPattern:             op.MatchPattern,
-		cache:                    op.MockCache,
-		identityServiceID:        op.IdentityServiceID,
-		identityServiceType:      op.IdentityServiceType,
-		gitlabIdentityProviderID: op.GitLabIdentityProviderID,
-		useNativeUsername:        op.UseNativeUsername,
+		client:            gitlab.NewClient(op.BaseURL, op.SudoToken, nil),
+		clientURL:         op.BaseURL,
+		codeHost:          gitlab.NewCodeHost(op.BaseURL),
+		repoPathPattern:   op.RepoPathPattern,
+		matchPattern:      op.MatchPattern,
+		cache:             op.MockCache,
+		configID:          op.ConfigID,
+		gitlabProvider:    op.GitLabIdentityProviderID,
+		useNativeUsername: op.UseNativeUsername,
 	}
 	if p.cache == nil {
 		p.cache = rcache.NewWithTTL(fmt.Sprintf("gitlabAuthz:%s", op.BaseURL.String()), int(math.Ceil(op.CacheTTL.Seconds())))
@@ -103,15 +97,18 @@ func NewGitLabAuthzProvider(op GitLabAuthzProviderOp) *GitLabAuthzProvider {
 }
 
 func (p *GitLabAuthzProvider) RepoPerms(ctx context.Context, account *extsvc.ExternalAccount, repos map[perm.Repo]struct{}) (map[api.RepoURI]map[perm.P]bool, error) {
-	// TODO(beyang): handle nil account
+	accountID := "" // empty means public / unauthenticated to the code host
+	if account != nil {
+		accountID = account.AccountID
+	}
 
 	myRepos, _ := p.Repos(ctx, repos)
 	var accessibleRepos map[api.RepoURI]struct{}
-	if r, exists := p.getCachedAccessList(account.AccountID); exists {
+	if r, exists := p.getCachedAccessList(accountID); exists {
 		accessibleRepos = r
 	} else if account.ServiceID == p.codeHost.ServiceID() && account.ServiceType == p.codeHost.ServiceType() {
 		var err error
-		accessibleRepos, err = p.fetchUserAccessList(ctx, account.AccountID)
+		accessibleRepos, err = p.fetchUserAccessList(ctx, accountID)
 		if err != nil {
 			return nil, err
 		}
@@ -120,7 +117,7 @@ func (p *GitLabAuthzProvider) RepoPerms(ctx context.Context, account *extsvc.Ext
 		if err != nil {
 			return nil, err
 		}
-		p.cache.Set(account.AccountID, accessibleReposB)
+		p.cache.Set(accountID, accessibleReposB)
 	}
 
 	perms := make(map[api.RepoURI]map[perm.P]bool)
@@ -158,32 +155,39 @@ func (p *GitLabAuthzProvider) Repos(ctx context.Context, repos map[perm.Repo]str
 	return mine, others
 }
 
-func (p *GitLabAuthzProvider) GetAccount(ctx context.Context, user *types.User, current []*extsvc.ExternalAccount) (mine *extsvc.ExternalAccount, updated bool, err error) {
-	var idAccount *extsvc.ExternalAccount
-	for _, acct := range current {
-		if p.codeHost.ServiceID() == acct.ServiceID && p.codeHost.ServiceType() == acct.ServiceType {
-			return acct, false, nil
-		}
-		if p.codeHost.ServiceID() == p.identityServiceID && p.codeHost.ServiceType() == p.identityServiceType {
-			idAccount = acct
-		}
-	}
-
+func (p *GitLabAuthzProvider) FetchAccount(ctx context.Context, user *types.User, current []*extsvc.ExternalAccount) (mine *extsvc.ExternalAccount, updated bool, err error) {
 	var glUser *gitlab.User
 	if p.useNativeUsername {
+		if user == nil {
+			return nil, nil
+		}
 		glUser, err = p.fetchAccountByUsername(ctx, user.Username)
 	} else {
+		// resolve the GitLab account using the authn provider (specified by p.AuthnConfigID)
+		authnProvider := auth.GetProviderByConfigID(p.authnConfigID)
+		if authnProvider == nil {
+			return nil, nil
+		}
+		var authnAcct *extsvc.ExternalAccount
+		for _, acct := range current {
+			if acct.ServiceID == authnProvider.CachedInfo().ServiceID && acct.ServiceType == authnProvider.ConfigID().Type {
+				authnAcct = acct
+				break
+			}
+		}
+		if authnAcct == nil {
+			return nil, nil
+		}
 		glUser, err = p.fetchAccountByExternalUID(ctx, idAccount.AccountID)
 	}
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 
 	jsonGLUser, err := json.Marshal(glUser)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
-
 	accountData := json.RawMessage(jsonGLUser)
 	glExternalAccount := extsvc.ExternalAccount{
 		UserID: glUser.ID,
@@ -196,13 +200,13 @@ func (p *GitLabAuthzProvider) GetAccount(ctx context.Context, user *types.User, 
 			AccountData: &accountData,
 		},
 	}
-	return &glExternalAccount, true, nil
+	return &glExternalAccount, nil
 }
 
 func (p *GitLabAuthzProvider) fetchAccountByExternalUID(ctx context.Context, uid string) (*gitlab.User, error) {
 	q := make(url.Values)
 	q.Add("extern_uid", uid)
-	q.Add("provider", p.gitlabIdentityProviderID)
+	q.Add("provider", p.gitlabProvider)
 	q.Add("per_page", "2")
 	glUsers, _, err := p.client.ListUsers(ctx, "users?"+q.Encode())
 	if err != nil {
@@ -267,8 +271,6 @@ func reposByMatchPattern(mt matchType, matchString string, repos map[perm.Repo]s
 // whether the cache entry exists.
 func (p *GitLabAuthzProvider) getCachedAccessList(accountID string) (map[api.RepoURI]struct{}, bool) {
 
-	return nil, false // DEBUG: disable cache
-
 	// TODO(beyang): trigger best-effort fetch in background if ttl is getting close (but avoid dup refetches)
 
 	cachedReposB, exists := p.cache.Get(accountID)
@@ -287,7 +289,11 @@ func (p *GitLabAuthzProvider) getCachedAccessList(accountID string) (map[api.Rep
 // fetchUserAccessList fetches the list of repositories that are readable to a user from the GitLab API.
 func (p *GitLabAuthzProvider) fetchUserAccessList(ctx context.Context, glUserID string) (map[api.RepoURI]struct{}, error) {
 	q := make(url.Values)
-	q.Add("sudo", glUserID)
+	if glUserID != "" {
+		q.Add("sudo", glUserID)
+	} else {
+		q.Add("visibility", "public")
+	}
 	q.Add("per_page", "100")
 
 	var allProjs []*gitlab.Project
